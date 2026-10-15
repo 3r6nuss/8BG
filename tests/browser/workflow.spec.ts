@@ -1,0 +1,59 @@
+import { test, expect } from '@playwright/test';
+import sharp from 'sharp';
+
+test('Ersteinrichtung, Produkt, Ausweis, Ankauf, Verlauf und mobile Ansicht', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/');
+  await page.getByLabel('Einrichtungsschlüssel').fill('browser-test-setup-token');
+  await page.getByLabel('Benutzername', { exact: true }).fill('browser-admin');
+  await page.getByLabel('Passwort', { exact: true }).fill('browser-strong-password-2026');
+  await page.getByRole('button', { name: 'Administration einrichten' }).click();
+  await expect(page.getByRole('heading', { name: 'Personalakten.' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Produkte', exact: true }).click();
+  await page.getByRole('button', { name: 'Produkt hinzufügen' }).click();
+  await page.getByLabel('Produktname').fill('Weizen');
+  await page.getByLabel('Ankaufpreis pro Einheit ($)').fill('720');
+  await page.getByRole('dialog').getByRole('button', { name: 'Speichern', exact: true }).click();
+  await expect(page.getByRole('cell', { name: '720,00 $' })).toBeVisible();
+
+  await page.getByRole('button', { name: /^Personen/ }).click();
+  await page.getByRole('button', { name: 'Neue Person anlegen' }).click();
+  const svg = Buffer.from(`<svg width="1000" height="350" xmlns="http://www.w3.org/2000/svg"><rect width="1000" height="350" fill="white"/><g fill="black" font-family="Arial" font-size="40"><text x="40" y="70">NAME: Alex Sommer</text><text x="40" y="160">GEBURTSDATUM: 2004/08/04</text></g></svg>`);
+  const buffer = await sharp(svg).png().toBuffer();
+  await page.getByLabel('Ausweisbild auswählen').setInputFiles({ name: 'rp-ausweis.png', mimeType: 'image/png', buffer });
+  await expect(page.getByLabel('Vor- und Nachname')).toHaveValue('Alex Sommer', { timeout: 30000 });
+  await expect(page.getByLabel('Geburtsdatum', { exact: true })).toHaveValue('2004-08-04');
+  await page.getByLabel('Telefonnummer', { exact: true }).fill('01982');
+  await page.getByLabel('Notizen', { exact: true }).fill('Testlieferant für Weizen');
+  await page.getByRole('checkbox', { name: /Ich habe die/ }).check();
+  await page.getByRole('button', { name: 'Person speichern' }).click();
+  await expect(page.getByRole('heading', { name: 'Alex Sommer', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Details ansehen' }).click();
+  await expect(page.getByAltText('RP-Ausweis von Alex Sommer')).toBeVisible();
+  await page.getByRole('button', { name: 'Schließen', exact: true }).click();
+
+  await page.getByRole('button', { name: /^Ankauf/ }).first().click();
+  await page.getByLabel('Menge Weizen', { exact: true }).fill('2');
+  await page.getByLabel('Zu Weizen addieren', { exact: true }).fill('3');
+  await page.getByRole('button', { name: 'Menge zu Weizen addieren' }).click();
+  await expect(page.getByLabel('Menge Weizen', { exact: true })).toHaveValue('5');
+  await page.getByLabel('Von welcher Person?').selectOption({ label: 'Alex Sommer · 01982' });
+  await page.getByRole('button', { name: 'Ankauf speichern' }).click();
+  await expect(page.getByRole('status')).toContainText('3.600,00 $');
+  await page.getByRole('button', { name: 'Verlauf', exact: true }).click();
+  await page.getByRole('button', { name: /Ankauf .* ansehen/ }).click();
+  await expect(page.getByRole('dialog')).toContainText('Alex Sommer');
+  await expect(page.getByRole('dialog').getByRole('cell', { name: '3.600,00 $' })).toHaveCount(2);
+  await page.getByRole('button', { name: 'Schließen', exact: true }).click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Menü öffnen' }).click();
+  await page.getByRole('button', { name: /^Personen/ }).click();
+  await expect(page.getByRole('heading', { name: 'Alex Sommer', exact: true })).toBeVisible();
+  const noOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+  expect(noOverflow).toBe(true);
+  await page.getByRole('button', { name: 'Menü öffnen' }).click();
+  await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Willkommen zurück.' })).toBeVisible();
+});
