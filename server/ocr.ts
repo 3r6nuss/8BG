@@ -5,6 +5,11 @@ import { createWorker } from 'tesseract.js';
 
 export interface ExtractedFields { name: string; birthDate: string }
 
+export function germanTrainingDataPath(): string {
+  const require = createRequire(import.meta.url);
+  return path.join(path.dirname(require.resolve('@tesseract.js-data/deu/package.json')), '4.0.0', 'deu.traineddata.gz');
+}
+
 function normalizeDate(value: string): string {
   const match = value.match(/\b(\d{4})[./-](\d{2})[./-](\d{2})\b/)
     ?? value.match(/\b(\d{2})[./-](\d{2})[./-](\d{4})\b/);
@@ -39,7 +44,8 @@ export function extractFields(text: string): ExtractedFields {
 
 export async function recognizeId(image: Buffer): Promise<string> {
   const require = createRequire(import.meta.url);
-  const langPath = path.join(path.dirname(require.resolve('@tesseract.js-data/deu/package.json')), '4.0.0');
+  const trainingData = germanTrainingDataPath();
+  const langPath = path.dirname(trainingData);
   const worker = await createWorker('deu', 1, {
     langPath,
     cacheMethod: 'none',

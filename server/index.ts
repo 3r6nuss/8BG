@@ -9,6 +9,11 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT m
 const host = process.env.HOST ?? '127.0.0.1';
 const dataDir = path.resolve(process.env.DATA_DIR ?? '.data');
 const db = openDatabase(dataDir);
+const healthToken = process.env.HEALTH_TOKEN ?? '';
+if (healthToken && healthToken.length < 32) {
+  db.close();
+  throw new Error('HEALTH_TOKEN muss mindestens 32 Zeichen lang sein.');
+}
 const bootstrapToken = randomBytes(24).toString('hex');
 if (!db.prepare('SELECT id FROM users LIMIT 1').get()) {
   console.log(`\n8BG Ersteinrichtung – einmaliger Einrichtungsschlüssel:\n${bootstrapToken}\nNur im Browser bei der ersten Einrichtung eingeben. Nicht weitergeben.\n`);
@@ -17,6 +22,7 @@ const app = createApp({
   db, dataDir, bootstrapToken,
   secureCookie: process.env.COOKIE_SECURE === '1',
   origin: process.env.APP_ORIGIN,
+  healthToken,
   distDir: process.argv.includes('--dev') ? undefined : path.resolve('dist'),
 });
 cleanup(db, dataDir);

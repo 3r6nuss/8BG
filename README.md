@@ -28,6 +28,121 @@ Beim ersten Start wird im Terminal ein zufälliger **Einrichtungsschlüssel** an
 
 Passwörter müssen 12–128 Zeichen enthalten. Benutzernamen bestehen aus 3–40 Buchstaben/Zahlen sowie Punkt, Bindestrich oder Unterstrich.
 
+## Auf dem Server: Portainer, Nginx Proxy Manager und Cloudflare
+
+Die mitgelieferte Konfiguration verwendet **https://8bg.3r6nuss.de** und das
+bereits vorhandene Docker-Netzwerk **nginx-proxy-manager_default**. Sie ist fuer
+einen einzelnen Docker-Server (kein Swarm) gedacht. Port 3001 wird nicht am Host
+veroeffentlicht; Nginx Proxy Manager erreicht den Container intern.
+
+### 1. Docker-Image auf dem Server bauen
+
+Die folgenden Befehle im **SSH-Terminal deines Linux-Servers** ausfuehren,
+nicht im Windows-Terminal und nicht in einem bestehenden Container:
+
+```sh
+git clone https://github.com/3r6nuss/8BG.git
+cd 8BG
+docker build -t 8bg:local .
+```
+
+Ist das Repository schon vorhanden, stattdessen in diesen Ordner wechseln und
+`git pull --ff-only` ausfuehren. Der Build muss auf demselben Docker-Server
+stattfinden, den Portainer verwaltet. Es gibt kein vorab veroeffentlichtes
+Container-Image; `8bg:local` wird durch diesen Build erzeugt.
+
+### 2. Portainer-Stack anlegen
+
+1. **Stacks -> Add stack**, Name `8bg`, **Web editor**.
+2. Den Inhalt von [docker-compose.portainer.yml](./docker-compose.portainer.yml)
+   unveraendert einfuegen. Das Image wurde bereits im ersten Schritt gebaut.
+3. Unter **Environment variables** `HEALTH_TOKEN` mit einem eigenen
+   zufaelligen Wert von mindestens 32 Zeichen setzen. Zum Generieren kann
+   auf dem Server `openssl rand -hex 32` verwendet werden. Den Wert vertraulich
+   behandeln und nicht in Git speichern.
+4. Stack bereitstellen. Keine Option zum erneuten Herunterladen des Images
+   aktivieren; `8bg:local` ist ein lokales Image.
+5. Unter **Containers -> 8bg-web-... -> Logs** den einmaligen
+   Einrichtungsschluessel ablesen. Der konkrete Containername haengt von der
+   Compose-Version ab; der Netzwerkname fuer den Proxy ist immer `8bg-web`.
+
+Das benannte Volume `8bg_data` behaelt Datenbank und Bilder bei Updates.
+Volume nicht loeschen. Fuer ein konsistentes Backup den Stack stoppen, das
+gesamte Volume sichern und danach wieder starten. Lokal bereits vorhandene
+Personen/Bilder werden nicht automatisch auf den Server uebertragen.
+
+### 3. Cloudflare-DNS und HTTPS
+
+1. Unter **DNS** einen **A-Record** `8bg` auf die oeffentliche IPv4-Adresse des
+   Servers setzen. Einen AAAA-Record nur setzen, wenn IPv6 ebenfalls korrekt
+   zum Proxy fuehrt.
+2. Fuer die erste Einrichtung den Record auf **DNS only** (graue Wolke)
+   stellen. Die Ports **80 und 443** muessen zum Nginx Proxy Manager fuehren.
+   Portainer, die NPM-Verwaltungsoberflaeche und Port 3001 nicht oeffentlich
+   freigeben.
+3. Im **Nginx Proxy Manager -> Hosts -> Proxy Hosts -> Add Proxy Host**:
+   - Domain Names: `8bg.3r6nuss.de`
+   - Scheme: `http`
+   - Forward Hostname / IP: `8bg-web`
+   - Forward Port: `3001`
+4. Unter **Advanced** eintragen, damit Ausweis-Uploads nicht am kleinen
+   Standardlimit des Proxys scheitern und die OCR ausreichend Zeit bekommt:
+
+   ```nginx
+   client_max_body_size 16m;
+   proxy_read_timeout 180s;
+   ```
+
+5. Unter **SSL** ein neues Let's-Encrypt-Zertifikat anfordern, die Bedingungen
+   akzeptieren und **Force SSL** aktivieren. Erst nach erfolgreicher
+   Zertifikatsausstellung weitergehen.
+6. In Cloudflare **SSL/TLS -> Full (strict)** verwenden, niemals **Flexible**.
+   Danach kann die orange Wolke (Proxied) aktiviert werden. Fuer diese
+   Subdomain keine **Cache Everything**-Regel verwenden; insbesondere
+   `/api/*` darf nicht zwischengespeichert werden.
+7. **https://8bg.3r6nuss.de** oeffnen, den Einrichtungsschluessel aus den
+   Container-Logs eingeben und den eigenen Admin-Zugang anlegen.
+
+Bei **502 Bad Gateway** zuerst pruefen, ob NPM und 8BG im Netzwerk
+`nginx-proxy-manager_default` sind und der 8BG-Container laeuft. Nach kurzer
+Startzeit sollte Portainer den Container als **healthy** anzeigen.
+
+### 4. Health-Checks der Serververwaltung aktivieren
+
+Im bereits vorhandenen Serververwaltungs-Stack setzen:
+
+```text
+BG_HEALTH_URL=https://8bg.3r6nuss.de/api/health
+BG_HEALTH_TOKEN=<derselbe Wert wie HEALTH_TOKEN im 8BG-Stack>
+```
+
+Die Serververwaltung muss ebenfalls die neue Health-Integration enthalten
+und danach neu bereitgestellt werden. Eine Cloudflare-Access-Anmeldeseite
+oder Browser-Challenge vor `/api/health` verhindert die automatische Abfrage;
+fuer diesen Pfad eine passende Ausnahme konfigurieren, den Bearer-Token-Schutz
+der Anwendung dabei beibehalten.
+
+### Updates
+
+Auf dem Server im geklonten Repository `git pull --ff-only` und danach
+`docker build -t 8bg:local .` ausfuehren. In Portainer den 8BG-Container mit dem
+neu gebauten lokalen Image **Recreate** ausfuehren, ohne das Image aus einer
+Registry neu zu ziehen. Das Datenvolume beibehalten und vorher sichern.
+
+### Mit der Serververwaltung verbinden
+
+Der Health-Endpunkt **`/api/health`** stellt zwölf Einzelprüfungen bereit: Anwendung/Laufzeit, Datenbankverbindung, Schema und Integrität, Daten- und Ausweisspeicher, freien Speicherplatz, deutsche OCR-Sprachdaten, WebP-Encoder, Prozessspeicher und abgelaufene Sitzungen. Die Serververwaltung ergänzt diese um Antwortzeit, Uptime, P95-Latenz und Ausfallhistorie.
+
+Einen gemeinsamen zufälligen Schlüssel generieren:
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Den gleichen Wert in 8BG als `HEALTH_TOKEN` und in der Serververwaltung als `BG_HEALTH_TOKEN` konfigurieren. In der Serververwaltung außerdem die erreichbare URL als `BG_HEALTH_URL=https://8bg.example.com/api/health` einstellen. Anschließend beide Anwendungen neu starten beziehungsweise den Serververwaltungs-Stack neu bereitstellen. Ohne gültigen Token liefert der Health-Endpunkt keine Diagnosedaten. Ohne konfiguriertes `HEALTH_TOKEN` ist der Endpunkt nur für eine ausschließlich interne, nicht öffentlich erreichbare Installation gedacht.
+
+**Netzwerk:** Die Serververwaltung muss 8BG direkt über HTTPS erreichen können. `localhost` zeigt innerhalb eines Containers auf den jeweiligen Container und eignet sich nicht als Adresse zwischen zwei Containern. Die Beispiel-URL muss durch die tatsächliche HTTPS-Adresse ersetzt werden, über die die Serververwaltung 8BG erreicht. Die Health-Antwort enthält ausschließlich Check-Namen, Status und begrenzte Kennzahlen, keine Zugangsdaten, Personendaten, Bildinhalte oder lokalen Dateipfade. Ohne `BG_HEALTH_URL` bleibt 8BG im Dashboard als „Nicht konfiguriert“ sichtbar.
+
 ### Entwicklung
 
 ```powershell

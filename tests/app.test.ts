@@ -53,11 +53,29 @@ describe('8BG API', () => {
 
   it('schützt Daten, Schreibzugriffe und fremde Ursprünge', async () => {
     await request(app).get('/api/persons').expect(401);
+    const health = await request(app).get('/api/health').expect(200);
+    assert.equal(health.body.service, '8bg');
+    assert.equal(health.body.status, 'up');
+    assert.equal(health.body.checks.length, 12);
+    assert.ok(health.body.checks.every((check: { status: string }) => ['up', 'degraded', 'down'].includes(check.status)));
+    assert.ok(!JSON.stringify(health.body).includes(dir));
     await admin.post('/api/products').send({ name: 'Milch', priceCents: 100000 }).expect(403);
     await admin.post('/api/products').set('X-CSRF-Token', csrf).set('Origin', 'https://fremd.example')
       .send({ name: 'Milch', priceCents: 100000 }).expect(403);
     const result = await admin.get('/api/persons').expect(200);
     assert.equal(result.headers['cache-control'], 'no-store');
+  });
+
+  it('schützt die Serververwaltungs-Diagnosen mit einem separaten Bearer-Token', async () => {
+    const token = 'a'.repeat(64);
+    const secured = createApp({ db, dataDir: dir, bootstrapToken: '', healthToken: token });
+    const unauthorized = await request(secured).get('/api/health').expect(401);
+    assert.deepEqual(unauthorized.body, { ok: false, error: 'Health-Check nicht autorisiert.' });
+    await request(secured).get('/api/health').set('Authorization', `Bearer ${'b'.repeat(64)}`).expect(401);
+    const health = await request(secured).get('/api/health').set('Authorization', `Bearer ${token}`).expect(200);
+    assert.equal(health.body.checks.length, 12);
+    assert.ok(!JSON.stringify(health.body).includes(token));
+    assert.ok(!JSON.stringify(health.body).includes(dir));
   });
 
   it('verhindert eine erneute Ersteinrichtung und zu kurze Passwörter', async () => {

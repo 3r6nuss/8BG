@@ -12,6 +12,8 @@ import { transaction } from './database.js';
 import { adminOnly, authenticate, clearSession, hashPassword, hashToken, issueSession, verifyPassword, type User } from './auth.js';
 import { extractFields, recognizeId } from './ocr.js';
 import { removeUnusedScan } from './maintenance.js';
+import { timingSafeEqual } from 'node:crypto';
+import { createHealthReporter } from './health.js';
 
 interface AppOptions {
   db: Database;
@@ -21,6 +23,7 @@ interface AppOptions {
   origin?: string;
   distDir?: string;
   recognize?: typeof recognizeId;
+  healthToken?: string;
 }
 
 class HttpError extends Error {
@@ -76,8 +79,9 @@ const purchaseColumns = `p.id,p.direction,p.person_id AS personId,p.person_name 
   p.notes,p.created_at AS createdAt,u.username AS createdBy`;
 
 export function createApp(options: AppOptions) {
-  const { db, dataDir, bootstrapToken, secureCookie = false, origin, distDir, recognize = recognizeId } = options;
+  const { db, dataDir, bootstrapToken, secureCookie = false, origin, distDir, recognize = recognizeId, healthToken = '' } = options;
   const app = express();
+  const reportHealth = createHealthReporter(db, dataDir);
   const bootstrapHash = hashToken(bootstrapToken);
   const dummyPassword = hashPassword(randomUUID());
   let scanning = false;
@@ -107,7 +111,21 @@ export function createApp(options: AppOptions) {
     next();
   });
 
-  app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+  app.get('/api/health', (req, res) => {
+    if (healthToken) {
+      const authorization = req.get('authorization') ?? '';
+      const match = /^Bearer ([\x21-\x7e]{32,256})$/.exec(authorization);
+      const supplied = match?.[1] ?? '';
+      const expectedBuffer = Buffer.from(healthToken);
+      const suppliedBuffer = Buffer.from(supplied);
+      if (expectedBuffer.length !== suppliedBuffer.length || !timingSafeEqual(expectedBuffer, suppliedBuffer)) {
+        res.status(401).json({ ok: false, error: 'Health-Check nicht autorisiert.' });
+        return;
+      }
+    }
+    const health = reportHealth();
+    res.status(health.status === 'down' ? 503 : 200).json(health);
+  });
   app.get('/api/auth/status', (_req, res) => {
     res.json({ needsSetup: !db.prepare('SELECT id FROM users LIMIT 1').get() });
   });

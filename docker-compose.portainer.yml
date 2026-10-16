@@ -1,0 +1,23 @@
+services:
+  web:
+    image: 8bg:local
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_ORIGIN: https://8bg.3r6nuss.de
+      COOKIE_SECURE: "1"
+      HEALTH_TOKEN: ${HEALTH_TOKEN:?Bitte einen zufaelligen Health-Token mit mindestens 32 Zeichen setzen}
+    volumes:
+      - data:/app/data
+    networks:
+      proxy:
+        aliases:
+          - 8bg-web
+
+volumes:
+  data:
+
+networks:
+  proxy:
+    external: true
+    name: nginx-proxy-manager_default
