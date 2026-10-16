@@ -47,9 +47,20 @@ const personSchema = z.object({
 });
 const productSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  priceCents: z.number().int().min(0).max(100_000_000),
+  buyPriceCents: z.number().int().min(0).max(100_000_000).optional(),
+  sellPriceCents: z.number().int().min(0).max(100_000_000).optional(),
+  priceCents: z.number().int().min(0).max(100_000_000).optional(),
+  active: z.boolean().default(true),
+}).transform(input => {
+  const buyPriceCents = input.buyPriceCents ?? input.priceCents;
+  const sellPriceCents = input.sellPriceCents ?? input.priceCents ?? buyPriceCents;
+  if (buyPriceCents === undefined || sellPriceCents === undefined) {
+    throw new HttpError(400, 'Bitte Ankaufs- und Verkaufspreis angeben.');
+  }
+  return { name: input.name, buyPriceCents, sellPriceCents, active: input.active };
 });
 const purchaseSchema = z.object({
+  direction: z.enum(['buy', 'sell']).default('buy'),
   personId: z.uuid(),
   requestId: z.uuid(),
   notes: z.string().trim().max(2000).default(''),
@@ -60,8 +71,8 @@ const purchaseSchema = z.object({
 });
 
 const personColumns = `id,name,birth_date AS birthDate,phone,notes,scan_id AS scanId,archived,created_at AS createdAt`;
-const productColumns = 'id,name,price_cents AS priceCents,active';
-const purchaseColumns = `p.id,p.person_id AS personId,p.person_name AS personName,p.total_cents AS totalCents,
+const productColumns = 'id,name,price_cents AS buyPriceCents,sale_price_cents AS sellPriceCents,price_cents AS priceCents,active';
+const purchaseColumns = `p.id,p.direction,p.person_id AS personId,p.person_name AS personName,p.total_cents AS totalCents,
   p.notes,p.created_at AS createdAt,u.username AS createdBy`;
 
 export function createApp(options: AppOptions) {
@@ -294,7 +305,7 @@ export function createApp(options: AppOptions) {
     const old = db.prepare('SELECT scan_id FROM persons WHERE id=?').get(id) as { scan_id: string | null } | undefined;
     if (!old) throw new HttpError(404, 'Person nicht gefunden.');
     if (db.prepare('SELECT id FROM purchases WHERE person_id=? LIMIT 1').get(id)) {
-      throw new HttpError(409, 'Zu dieser Person existieren Ankäufe. Bitte die Person stattdessen archivieren.');
+      throw new HttpError(409, 'Zu dieser Person existieren An- oder Verkäufe. Bitte die Person stattdessen archivieren.');
     }
     db.prepare('DELETE FROM persons WHERE id=?').run(id);
     removeUnusedScan(db, dataDir, old.scan_id);
@@ -304,29 +315,35 @@ export function createApp(options: AppOptions) {
   app.post('/api/products', adminOnly, (req, res) => {
     const data = productSchema.parse(req.body);
     const id = randomUUID();
-    db.prepare('INSERT INTO products (id,name,price_cents) VALUES (?,?,?)').run(id, data.name, data.priceCents);
+    db.prepare('INSERT INTO products (id,name,price_cents,sale_price_cents,active) VALUES (?,?,?,?,?)')
+      .run(id, data.name, data.buyPriceCents, data.sellPriceCents, Number(data.active));
     res.status(201).json(db.prepare(`SELECT ${productColumns} FROM products WHERE id=?`).get(id));
   });
   app.put('/api/products/:id', adminOnly, (req, res) => {
     const id = z.uuid().parse(req.params.id);
-    const data = productSchema.extend({ active: z.boolean() }).parse(req.body);
-    const result = db.prepare('UPDATE products SET name=?,price_cents=?,active=? WHERE id=?')
-      .run(data.name, data.priceCents, Number(data.active), id);
+    const data = productSchema.parse(req.body);
+    const result = db.prepare('UPDATE products SET name=?,price_cents=?,sale_price_cents=?,active=? WHERE id=?')
+      .run(data.name, data.buyPriceCents, data.sellPriceCents, Number(data.active), id);
     if (!result.changes) throw new HttpError(404, 'Produkt nicht gefunden.');
     res.json(db.prepare(`SELECT ${productColumns} FROM products WHERE id=?`).get(id));
   });
 
   app.get('/api/purchases', (req, res) => {
-    const { page } = z.object({ page: z.coerce.number().int().min(1).default(1) }).parse(req.query);
+    const { page, direction } = z.object({
+      page: z.coerce.number().int().min(1).default(1),
+      direction: z.enum(['all', 'buy', 'sell']).default('all'),
+    }).parse(req.query);
+    const clause = direction === 'all' ? '' : 'WHERE p.direction=?';
+    const params = direction === 'all' ? [] : [direction];
     const purchases = db.prepare(`SELECT ${purchaseColumns} FROM purchases p JOIN users u ON p.created_by=u.id
-      ORDER BY p.created_at DESC,p.rowid DESC LIMIT 50 OFFSET ?`).all((page - 1) * 50);
-    const count = db.prepare('SELECT COUNT(*) AS total FROM purchases').get() as { total: number };
+      ${clause} ORDER BY p.created_at DESC,p.rowid DESC LIMIT 50 OFFSET ?`).all(...params, (page - 1) * 50);
+    const count = db.prepare(`SELECT COUNT(*) AS total FROM purchases p ${clause}`).get(...params) as { total: number };
     res.json({ items: purchases, total: count.total, page, pageSize: 50 });
   });
   app.get('/api/purchases/:id', (req, res) => {
     const id = z.uuid().parse(req.params.id);
     const purchase = db.prepare(`SELECT ${purchaseColumns} FROM purchases p JOIN users u ON p.created_by=u.id WHERE p.id=?`).get(id);
-    if (!purchase) throw new HttpError(404, 'Ankauf nicht gefunden.');
+    if (!purchase) throw new HttpError(404, 'Buchung nicht gefunden.');
     res.json({
       ...purchase,
       items: db.prepare(`SELECT product_id AS productId,product_name AS productName,unit_price_cents AS unitPriceCents,
@@ -351,21 +368,22 @@ export function createApp(options: AppOptions) {
       const person = db.prepare('SELECT name FROM persons WHERE id=? AND archived=0').get(data.personId) as { name: string } | undefined;
       if (!person) throw new HttpError(400, 'Bitte eine aktive Person auswählen.');
       const items = data.items.map(item => {
-        const product = db.prepare('SELECT name,price_cents FROM products WHERE id=? AND active=1')
-          .get(item.productId) as { name: string; price_cents: number } | undefined;
+        const product = db.prepare('SELECT name,price_cents,sale_price_cents FROM products WHERE id=? AND active=1')
+          .get(item.productId) as { name: string; price_cents: number; sale_price_cents: number } | undefined;
         if (!product) throw new HttpError(409, 'Ein Produkt ist nicht mehr verfügbar. Bitte Produkte neu laden.');
-        if (product.price_cents !== item.unitPriceCents) {
+        const priceCents = data.direction === 'buy' ? product.price_cents : product.sale_price_cents;
+        if (priceCents !== item.unitPriceCents) {
           throw new HttpError(409, 'Ein Produktpreis wurde zwischenzeitlich geändert. Bitte die Seite neu laden und den Betrag erneut prüfen.');
         }
-        return { ...item, name: product.name, priceCents: product.price_cents, total: product.price_cents * item.quantity };
+        return { ...item, name: product.name, priceCents, total: priceCents * item.quantity };
       });
       const totalCents = items.reduce((sum, item) => sum + item.total, 0);
       if (!Number.isSafeInteger(totalCents) || totalCents > 1_000_000_000_000) {
         throw new HttpError(400, 'Der Gesamtbetrag ist zu hoch (maximal 10 Milliarden $).');
       }
       const id = randomUUID();
-      db.prepare('INSERT INTO purchases (id,person_id,person_name,created_by,total_cents,notes,request_id,request_hash) VALUES (?,?,?,?,?,?,?,?)')
-        .run(id, data.personId, person.name, req.user!.id, totalCents, data.notes, data.requestId, requestHash);
+      db.prepare('INSERT INTO purchases (id,person_id,person_name,created_by,direction,total_cents,notes,request_id,request_hash) VALUES (?,?,?,?,?,?,?,?,?)')
+        .run(id, data.personId, person.name, req.user!.id, data.direction, totalCents, data.notes, data.requestId, requestHash);
       const insertItem = db.prepare('INSERT INTO purchase_items (purchase_id,product_id,product_name,unit_price_cents,quantity,total_cents) VALUES (?,?,?,?,?,?)');
       for (const item of items) insertItem.run(id, item.productId, item.name, item.priceCents, item.quantity, item.total);
       return { purchase: { id, totalCents }, duplicate: false };
@@ -373,11 +391,25 @@ export function createApp(options: AppOptions) {
     res.status(result.duplicate ? 200 : 201).json(result.purchase);
   });
   app.get('/api/stats', (_req, res) => {
+    const totals = db.prepare(`SELECT
+      COUNT(*) AS transactions,
+      SUM(CASE WHEN direction='buy' THEN 1 ELSE 0 END) AS purchases,
+      SUM(CASE WHEN direction='sell' THEN 1 ELSE 0 END) AS sales,
+      COALESCE(SUM(CASE WHEN direction='buy' THEN total_cents ELSE 0 END),0) AS purchaseTotalCents,
+      COALESCE(SUM(CASE WHEN direction='sell' THEN total_cents ELSE 0 END),0) AS saleTotalCents,
+      COALESCE(SUM(total_cents),0) AS totalCents FROM purchases`).get() as {
+        transactions: number; purchases: number | null; sales: number | null;
+        purchaseTotalCents: number; saleTotalCents: number; totalCents: number;
+      };
     res.json({
       persons: (db.prepare('SELECT COUNT(*) AS n FROM persons WHERE archived=0').get() as { n: number }).n,
       products: (db.prepare('SELECT COUNT(*) AS n FROM products WHERE active=1').get() as { n: number }).n,
-      purchases: (db.prepare('SELECT COUNT(*) AS n FROM purchases').get() as { n: number }).n,
-      totalCents: (db.prepare('SELECT COALESCE(SUM(total_cents),0) AS n FROM purchases').get() as { n: number }).n,
+      purchases: totals.transactions,
+      totalCents: totals.totalCents,
+      purchaseCount: totals.purchases ?? 0,
+      saleCount: totals.sales ?? 0,
+      purchaseTotalCents: totals.purchaseTotalCents,
+      saleTotalCents: totals.saleTotalCents,
     });
   });
   app.use('/api', (_req, res) => res.status(404).json({ error: 'API-Endpunkt nicht gefunden.' }));

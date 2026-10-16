@@ -10,9 +10,9 @@ import type { Person, Product, Session, Stats } from './types';
 type Page = 'personen' | 'ankauf' | 'produkte' | 'verlauf' | 'einstellungen';
 const pages: { id: Page; title: string; label: string; description: string; icon: ReactNode }[] = [
   { id: 'personen', title: 'Personalakten', label: 'Personen', description: 'Die richtigen Kontakte. Alle Informationen an einem Ort.', icon: <UsersRound size={19} /> },
-  { id: 'ankauf', title: 'Ankaufrechner', label: 'Ankauf', description: 'Produkte auswählen, Mengen addieren und Ankäufe erfassen.', icon: <ShoppingBasket size={19} /> },
-  { id: 'produkte', title: 'Produktverwaltung', label: 'Produkte', description: 'Dein Sortiment und deine Ankaufpreise im Überblick.', icon: <Package size={19} /> },
-  { id: 'verlauf', title: 'Ankaufhistorie', label: 'Verlauf', description: 'Jeder Ankauf. Jede Person. Jeder Betrag.', icon: <ReceiptText size={19} /> },
+  { id: 'ankauf', title: 'An- & Verkauf', label: 'Handel', description: 'Richtung auswählen, Produkte addieren und die Buchung zuordnen.', icon: <ShoppingBasket size={19} /> },
+  { id: 'produkte', title: 'Produktverwaltung', label: 'Produkte', description: 'Dein Sortiment mit getrennten Ankaufs- und Verkaufspreisen.', icon: <Package size={19} /> },
+  { id: 'verlauf', title: 'Buchungsverlauf', label: 'Verlauf', description: 'Alle An- und Verkäufe, sauber nach Richtung getrennt.', icon: <ReceiptText size={19} /> },
   { id: 'einstellungen', title: 'Einstellungen', label: 'Einstellungen', description: 'Dein Konto und die Zugänge für dein Team.', icon: <Settings2 size={19} /> },
 ];
 function currentPage(): Page { return pages.find(page => page.id === window.location.hash.slice(1))?.id ?? 'personen'; }
@@ -57,7 +57,10 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
   const [menuOpen, setMenuOpen] = useState(false);
   const [persons, setPersons] = useState<Person[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [stats, setStats] = useState<Stats>({ persons: 0, products: 0, purchases: 0, totalCents: 0 });
+  const [stats, setStats] = useState<Stats>({
+    persons: 0, products: 0, purchases: 0, totalCents: 0,
+    purchaseCount: 0, saleCount: 0, purchaseTotalCents: 0, saleTotalCents: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
@@ -105,7 +108,7 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       <a className="brand" href="#personen"><div className="brand-mark">8</div><div><strong>8BG<span className="brand-dot">.</span></strong><span>HANDELSVERWALTUNG</span></div></a>
       <div className="sidebar-section-label">WORKSPACE</div>
       <nav aria-label="Hauptnavigation">{pages.map(item => <button key={item.id} className={`nav-item ${page === item.id ? 'active' : ''}`} onClick={() => navigate(item.id)} aria-current={page === item.id ? 'page' : undefined}>
-        {item.icon}<span>{item.label}</span>{item.id === 'personen' && <span className="nav-count">{stats.persons}</span>}{item.id === 'ankauf' && <span className="nav-new">NEU</span>}
+        {item.icon}<span>{item.label}</span>{item.id === 'personen' && <span className="nav-count">{stats.persons}</span>}{item.id === 'ankauf' && <span className="nav-new">AN / VERKAUF</span>}
       </button>)}</nav>
       <div className="sidebar-tip"><span className="tip-icon"><ShieldCheck size={20} /></span><strong>Deine Daten bleiben bei dir.</strong><p>Ausweise werden lokal erkannt und sicher als WebP abgelegt.</p><span>Kein externer KI-Dienst <ArrowUpRight size={13} /></span></div>
       <div className="sidebar-bottom"><div className="user-avatar">{initials(session.user.username)}</div><div className="user-info"><strong>{session.user.username}</strong><span>{admin ? 'Administrator' : 'Mitarbeiter'}</span></div><button className="icon-button" aria-label="Abmelden" title="Abmelden" onClick={() => void logout()}><LogOut size={17} /></button></div>
@@ -119,8 +122,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
       {page !== 'einstellungen' && <div className="stats-grid">
         <Stat label="Aktive Personen" value={stats.persons.toLocaleString('de-DE')} detail="In deiner Kartei" icon={<UsersRound size={21} />} />
         <Stat label="Produkte" value={stats.products.toLocaleString('de-DE')} detail="Im aktiven Sortiment" icon={<Package size={21} />} />
-        <Stat label="Erfasste Ankäufe" value={stats.purchases.toLocaleString('de-DE')} detail="Vollständig dokumentiert" icon={<ReceiptText size={21} />} />
-        <Stat label="Gesamtauszahlung" value={money(stats.totalCents)} detail="Über alle Ankäufe" icon={<ArrowDownLeft size={21} />} accent />
+        <Stat label="Ankäufe · Auszahlungen" value={stats.purchaseCount.toLocaleString('de-DE')} detail={`Ausgezahlt: ${money(stats.purchaseTotalCents)}`} icon={<ArrowDownLeft size={21} />} />
+        <Stat label="Verkäufe · Einnahmen" value={stats.saleCount.toLocaleString('de-DE')} detail={`Eingenommen: ${money(stats.saleTotalCents)}`} icon={<ArrowUpRight size={21} />} accent />
       </div>}
       {loading ? <div className="loading-inline"><Spinner />Daten werden geladen …</div> : <>
         {page === 'personen' && <><div className="section-toolbar"><div className="search"><Search size={17} /><input aria-label="Personen suchen" placeholder="Nach Name, Telefon oder Notiz suchen …" value={search} onChange={event => setSearch(event.target.value)} />{search && <button className="text-button" aria-label="Suche zurücksetzen" onClick={() => setSearch('')}><X size={15} /></button>}</div><div className="toolbar-right"><span className="results-count">{filteredPersons.length} Personen</span><select aria-label="Personenstatus" value={showArchived ? 'archived' : 'active'} onChange={event => setShowArchived(event.target.value === 'archived')}><option value="active">Aktive Personen</option><option value="archived">Archivierte Personen</option></select></div></div>
@@ -134,8 +137,8 @@ function Workspace({ session, onLogout }: { session: Session; onLogout: () => vo
         </>}
         {page === 'ankauf' && <Calculator persons={persons} products={products} onSaved={refreshAfterSave} onNavigate={navigate} />}
         {page === 'produkte' && <><div className="section-toolbar"><div className="search"><Search size={17} /><input aria-label="Produkte suchen" placeholder="Produkte durchsuchen …" value={search} onChange={event => setSearch(event.target.value)} /></div><span className="results-count">{products.length} Produkte insgesamt</span></div>
-          <section className="panel">{filteredProducts.length ? <div className="table-scroll"><table><thead><tr><th>Produkt</th><th>Status</th><th className="number">Ankaufpreis / Stück</th>{admin && <th className="number">Aktion</th>}</tr></thead><tbody>{filteredProducts.map(product => <tr key={product.id}><td><div className="product-label"><span className="product-icon"><Package size={19} /></span><strong>{product.name}</strong></div></td><td><span className={`tag ${product.active ? '' : 'neutral'}`}>{product.active ? 'Aktiv' : 'Inaktiv'}</span></td><td className="number amount">{money(product.priceCents)}</td>{admin && <td className="number"><button className="button subtle small" onClick={() => setProductEditor(product)}><Pencil size={14} />Bearbeiten</button></td>}</tr>)}</tbody></table></div> : <Empty icon={<Package size={30} />} title={search ? 'Keine passenden Produkte' : 'Platz für dein Sortiment'} text={search ? 'Versuche einen anderen Suchbegriff.' : admin ? 'Lege Produkte mit Namen und Ankaufpreis an. Sie erscheinen anschließend direkt im Rechner.' : 'Ein Administrator kann hier neue Produkte und Preise hinterlegen.'} action={admin && !search ? <button className="button primary" onClick={() => setProductEditor('new')}><Plus size={17} />Erstes Produkt anlegen</button> : undefined} />}</section>
-          <div className="section-bottom"><CircleHelp size={14} />Preisänderungen gelten nur für neue Ankäufe. Inaktive Produkte bleiben im Verlauf erhalten.</div>
+          <section className="panel">{filteredProducts.length ? <div className="table-scroll"><table><thead><tr><th>Produkt</th><th>Status</th><th className="number">Ankauf / Stück</th><th className="number">Verkauf / Stück</th>{admin && <th className="number">Aktion</th>}</tr></thead><tbody>{filteredProducts.map(product => <tr key={product.id}><td><div className="product-label"><span className="product-icon"><Package size={19} /></span><strong>{product.name}</strong></div></td><td><span className={`tag ${product.active ? '' : 'neutral'}`}>{product.active ? 'Aktiv' : 'Inaktiv'}</span></td><td className="number amount">{money(product.buyPriceCents)}</td><td className="number amount">{money(product.sellPriceCents)}</td>{admin && <td className="number"><button className="button subtle small" onClick={() => setProductEditor(product)}><Pencil size={14} />Bearbeiten</button></td>}</tr>)}</tbody></table></div> : <Empty icon={<Package size={30} />} title={search ? 'Keine passenden Produkte' : 'Platz für dein Sortiment'} text={search ? 'Versuche einen anderen Suchbegriff.' : admin ? 'Lege Produktnamen sowie getrennte Ankaufs- und Verkaufspreise an. Sie erscheinen anschließend direkt im Rechner.' : 'Ein Administrator kann hier neue Produkte und Preise hinterlegen.'} action={admin && !search ? <button className="button primary" onClick={() => setProductEditor('new')}><Plus size={17} />Erstes Produkt anlegen</button> : undefined} />}</section>
+          <div className="section-bottom"><CircleHelp size={14} />Preisänderungen gelten nur für neue Buchungen. Inaktive Produkte bleiben im Verlauf erhalten.</div>
         </>}
         {page === 'verlauf' && <History revision={revision} />}
         {page === 'einstellungen' && <Settings user={session.user} />}

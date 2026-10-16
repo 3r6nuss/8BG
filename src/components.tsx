@@ -163,24 +163,33 @@ export function ProductEditor({ product, onClose, onSaved }: { product?: Product
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError('');
     const form = new FormData(event.currentTarget);
-    const rawPrice = String(form.get('price')).replace(',', '.');
-    const priceCents = Math.round(Number(rawPrice) * 100);
+    const rawBuyPrice = String(form.get('buyPrice')).replace(',', '.');
+    const rawSellPrice = String(form.get('sellPrice')).replace(',', '.');
+    const buyPriceCents = Math.round(Number(rawBuyPrice) * 100);
+    const sellPriceCents = Math.round(Number(rawSellPrice) * 100);
     try {
-      if (!/^\d+(?:\.\d{1,2})?$/.test(rawPrice) || !Number.isSafeInteger(priceCents)) throw new Error('Bitte einen gültigen Preis mit höchstens zwei Nachkommastellen eingeben.');
+      if (!/^\d+(?:\.\d{1,2})?$/.test(rawBuyPrice) || !Number.isSafeInteger(buyPriceCents)
+        || !/^\d+(?:\.\d{1,2})?$/.test(rawSellPrice) || !Number.isSafeInteger(sellPriceCents)) {
+        throw new Error('Bitte gültige Ankaufs- und Verkaufspreise mit höchstens zwei Nachkommastellen eingeben.');
+      }
       await api(product ? `/products/${product.id}` : '/products', {
         method: product ? 'PUT' : 'POST',
-        body: JSON.stringify({ name: form.get('name'), priceCents, active: form.get('active') === 'on' }),
+        body: JSON.stringify({
+          name: form.get('name'), buyPriceCents, sellPriceCents,
+          active: product ? form.get('active') === 'on' : true,
+        }),
       });
       await onSaved(); onClose();
     } catch (error) { setError(error instanceof Error ? error.message : 'Speichern fehlgeschlagen.'); }
     finally { setBusy(false); }
   }
-  return <Modal title={product ? 'Produkt bearbeiten' : 'Neues Produkt'} subtitle="Lege den Ankaufpreis pro Einheit fest." onClose={onClose} busy={busy}>
+  return <Modal title={product ? 'Produkt bearbeiten' : 'Neues Produkt'} subtitle="Lege getrennte Ankauf- und Verkaufspreise pro Einheit fest." onClose={onClose} busy={busy}>
     <form onSubmit={submit}><div className="modal-body">
       <label>Produktname<input name="name" required maxLength={100} defaultValue={product?.name} placeholder="z. B. Weizen" /></label>
-      <label>Ankaufpreis pro Einheit ($)<input name="price" type="number" min="0" max="1000000" step="0.01" required defaultValue={product ? (product.priceCents / 100).toFixed(2) : ''} placeholder="0,00" /></label>
-      {product && <label className="checkbox"><input type="checkbox" name="active" defaultChecked={Boolean(product.active)} />Produkt ist für Ankäufe verfügbar</label>}
-      <div className="notice">Bereits gespeicherte Ankäufe behalten ihre ursprünglichen Preise.</div>
+      <div className="form-grid"><label>Ankaufpreis pro Einheit ($)<input name="buyPrice" type="number" min="0" max="1000000" step="0.01" required defaultValue={product ? (product.buyPriceCents / 100).toFixed(2) : ''} placeholder="0,00" /></label>
+        <label>Verkaufspreis pro Einheit ($)<input name="sellPrice" type="number" min="0" max="1000000" step="0.01" required defaultValue={product ? (product.sellPriceCents / 100).toFixed(2) : ''} placeholder="0,00" /></label></div>
+      {product && <label className="checkbox"><input type="checkbox" name="active" defaultChecked={Boolean(product.active)} />Produkt ist für An- und Verkäufe verfügbar</label>}
+      <div className="notice">Bestehende Buchungen behalten ihre ursprünglichen Preise. Bei älteren Produkten wurde der bisherige Preis als Startwert für beide Felder übernommen.</div>
       {error && <ErrorBox message={error} />}</div>
       <div className="modal-footer"><span /> <div className="button-row"><button type="button" className="button subtle" disabled={busy} onClick={onClose}>Abbrechen</button><button className="button primary" disabled={busy}>{busy ? <Spinner /> : <Check size={16} />}Speichern</button></div></div>
     </form>

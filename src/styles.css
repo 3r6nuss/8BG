@@ -2089,3 +2089,106 @@ details summary {
     scroll-behavior: auto!important
   }
 }
+.direction-switch {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 8px;
+  max-width: 600px;
+  padding: 5px;
+  margin: 0 0 19px;
+  background: #13101d;
+  border: 1px solid #2b2137;
+  border-radius: 11px
+}
+.direction-switch button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 22px minmax(0,1fr);
+  align-items: center;
+  gap: 3px 9px;
+  padding: 10px 13px;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #a596b3
+}
+.direction-switch button>svg {
+  grid-row: span 2;
+  justify-self: center
+}
+.direction-switch button>span {
+  font-size: 12px;
+  font-weight: 650
+}
+.direction-switch button>small {
+  font-size: 9px;
+  color: #83758f;
+  white-space: normal
+}
+.direction-switch button.active.buy {
+  background: #67358c2b;
+  border-color: #9861ba55;
+  color: #d0a3ee
+}
+.direction-switch button.active.sell {
+  background: #25554130;
+  border-color: #57957455;
+  color: #9edbbc
+}
+.direction-switch button.active.buy>small {
+  color: #ac86c0
+}
+.direction-switch button.active.sell>small {
+  color: #8ba997
+}
+.history-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px
+}
+.history-controls>select {
+  width: 155px;
+  font-size: 10px;
+  padding: 10px
+}
+.transaction-tag.buy {
+  color: #c8a5dc;
+  background: #59357030;
+  border-color: #79529a55;
+  margin-right: 9px
+}
+.transaction-tag.sell {
+  color: #9edbbc;
+  background: #265c4130;
+  border-color: #49826855;
+  margin-right: 9px
+}
+.stats-grid .stat-card:not(.accent) .stat-value,
+.stats-grid .stat-card.accent .stat-value {
+  font-size: 26px
+}
+@media(max-width:680px) {
+  .history-controls {
+    width: 100%
+  }
+  .history-controls>select {
+    flex: 0 0 135px;
+    width: 135px
+  }
+  .history-controls .search {
+    flex: 1;
+    width: auto;
+    min-width: 0
+  }
+  .history-controls .search input {
+    width: 100%
+  }
+  .direction-switch button {
+    padding: 10px 8px;
+    gap: 3px 5px
+  }
+  .direction-switch button>small {
+    font-size: 8px
+  }
+}

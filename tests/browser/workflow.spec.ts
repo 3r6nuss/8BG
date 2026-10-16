@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import sharp from 'sharp';
 
-test('Ersteinrichtung, Produkt, Ausweis, Ankauf, Verlauf und mobile Ansicht', async ({ page }) => {
+test('Ersteinrichtung, Produkt, Ausweis, An- und Verkauf, Verlauf und mobile Ansicht', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/');
   await page.getByLabel('Einrichtungsschlüssel').fill('browser-test-setup-token');
@@ -14,8 +14,10 @@ test('Ersteinrichtung, Produkt, Ausweis, Ankauf, Verlauf und mobile Ansicht', as
   await page.getByRole('button', { name: 'Produkt hinzufügen' }).click();
   await page.getByLabel('Produktname').fill('Weizen');
   await page.getByLabel('Ankaufpreis pro Einheit ($)').fill('720');
+  await page.getByLabel('Verkaufspreis pro Einheit ($)').fill('1080');
   await page.getByRole('dialog').getByRole('button', { name: 'Speichern', exact: true }).click();
   await expect(page.getByRole('cell', { name: '720,00 $' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '1.080,00 $' })).toBeVisible();
 
   await page.getByRole('button', { name: /^Personen/ }).click();
   await page.getByRole('button', { name: 'Neue Person anlegen' }).click();
@@ -33,7 +35,13 @@ test('Ersteinrichtung, Produkt, Ausweis, Ankauf, Verlauf und mobile Ansicht', as
   await expect(page.getByAltText('RP-Ausweis von Alex Sommer')).toBeVisible();
   await page.getByRole('button', { name: 'Schließen', exact: true }).click();
 
-  await page.getByRole('button', { name: /^Ankauf/ }).first().click();
+  await page.getByRole('button', { name: 'Handel' }).click();
+  await expect(page.getByRole('heading', { name: 'An- & Verkauf.' })).toBeVisible();
+  await page.locator('.direction-switch').getByRole('button', { name: /Verkauf/ }).click();
+  await expect(page.getByRole('columnheader', { name: 'Verkauf / Stück' })).toBeVisible();
+  await expect(page.getByText('1.080,00 $', { exact: true })).toBeVisible();
+  await page.locator('.direction-switch').getByRole('button', { name: /Ankauf/ }).click();
+  await expect(page.getByRole('columnheader', { name: 'Ankauf / Stück' })).toBeVisible();
   await page.getByLabel('Menge Weizen', { exact: true }).fill('2');
   await page.getByLabel('Zu Weizen addieren', { exact: true }).fill('3');
   await page.getByRole('button', { name: 'Menge zu Weizen addieren' }).click();
@@ -46,6 +54,24 @@ test('Ersteinrichtung, Produkt, Ausweis, Ankauf, Verlauf und mobile Ansicht', as
   await expect(page.getByRole('dialog')).toContainText('Alex Sommer');
   await expect(page.getByRole('dialog').getByRole('cell', { name: '3.600,00 $' })).toHaveCount(2);
   await page.getByRole('button', { name: 'Schließen', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Handel' }).click();
+  await page.locator('.direction-switch').getByRole('button', { name: /Verkauf/ }).click();
+  await page.getByLabel('Menge Weizen', { exact: true }).fill('2');
+  await page.getByLabel('An welche Person?').selectOption({ label: 'Alex Sommer · 01982' });
+  await page.getByRole('button', { name: 'Verkauf speichern' }).click();
+  await expect(page.getByRole('status')).toContainText('2.160,00 $');
+  await page.getByRole('button', { name: 'Verlauf', exact: true }).click();
+  await page.getByLabel('Buchungsart filtern').selectOption('sell');
+  await expect(page.getByText('Verkäufe · Seite 1 von 1')).toBeVisible();
+  await expect(page.getByRole('cell', { name: '2.160,00 $' })).toBeVisible();
+  await page.getByRole('button', { name: /Verkauf .* ansehen/ }).click();
+  await expect(page.getByRole('dialog')).toContainText('Gesamteinnahme');
+  await expect(page.getByRole('dialog').getByRole('cell', { name: '1.080,00 $' })).toBeVisible();
+  await page.getByRole('button', { name: 'Schließen', exact: true }).click();
+  await page.getByLabel('Buchungsart filtern').selectOption('buy');
+  await expect(page.getByText('Ankäufe · Seite 1 von 1')).toBeVisible();
+  await expect(page.getByRole('cell', { name: '3.600,00 $' })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Menü öffnen' }).click();

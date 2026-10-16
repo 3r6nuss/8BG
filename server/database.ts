@@ -33,12 +33,14 @@ export function openDatabase(dataDir: string) {
     CREATE TABLE IF NOT EXISTS products (
       id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE,
       price_cents INTEGER NOT NULL CHECK(price_cents >= 0),
+      sale_price_cents INTEGER NOT NULL DEFAULT 0 CHECK(sale_price_cents >= 0),
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     );
     CREATE TABLE IF NOT EXISTS purchases (
       id TEXT PRIMARY KEY, person_id TEXT NOT NULL REFERENCES persons(id),
       person_name TEXT NOT NULL, created_by TEXT NOT NULL REFERENCES users(id),
+      direction TEXT NOT NULL DEFAULT 'buy' CHECK(direction IN ('buy','sell')),
       total_cents INTEGER NOT NULL CHECK(total_cents >= 0),
       notes TEXT NOT NULL DEFAULT '', request_id TEXT NOT NULL, request_hash TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -53,6 +55,16 @@ export function openDatabase(dataDir: string) {
     CREATE INDEX IF NOT EXISTS idx_purchases_created ON purchases(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
   `);
+  const productColumns = db.prepare('PRAGMA table_info(products)').all() as { name: string }[];
+  if (!productColumns.some(column => column.name === 'sale_price_cents')) {
+    db.exec('ALTER TABLE products ADD COLUMN sale_price_cents INTEGER NOT NULL DEFAULT 0 CHECK(sale_price_cents >= 0)');
+    db.exec('UPDATE products SET sale_price_cents=price_cents');
+  }
+  const purchaseColumns = db.prepare('PRAGMA table_info(purchases)').all() as { name: string }[];
+  if (!purchaseColumns.some(column => column.name === 'direction')) {
+    db.exec("ALTER TABLE purchases ADD COLUMN direction TEXT NOT NULL DEFAULT 'buy' CHECK(direction IN ('buy','sell'))");
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_purchases_direction_created ON purchases(direction,created_at DESC)');
   return db;
 }
 

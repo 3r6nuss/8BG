@@ -4,6 +4,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import request from 'supertest';
 import sharp from 'sharp';
 import { createApp } from '../server/app.js';
@@ -108,7 +109,47 @@ describe('8BG API', () => {
     const stats = await admin.get('/api/stats').expect(200);
     assert.equal(stats.body.totalCents, 332002);
     assert.equal(stats.body.purchases, 1);
+    assert.equal(stats.body.purchaseCount, 1);
+    assert.equal(stats.body.saleCount, 0);
+    assert.equal(stats.body.purchaseTotalCents, 332002);
+    assert.equal(stats.body.saleTotalCents, 0);
     await admin.delete(`/api/persons/${p.id}`).set('X-CSRF-Token', csrf).expect(409);
+  });
+
+  it('berechnet Verkäufe mit Verkaufspreisen und trennt ihre Einnahmen von Auszahlungen', async () => {
+    const p = await person();
+    const created = await admin.post('/api/products').set('X-CSRF-Token', csrf).send({
+      name: 'Äpfel', buyPriceCents: 2000, sellPriceCents: 3750,
+    }).expect(201);
+    assert.equal(created.body.buyPriceCents, 2000);
+    assert.equal(created.body.sellPriceCents, 3750);
+    assert.equal(created.body.active, 1);
+    const item = created.body;
+    const sold = await admin.post('/api/purchases').set('X-CSRF-Token', csrf).send({
+      direction: 'sell', personId: p.id, requestId: randomUUID(),
+      items: [{ productId: item.id, quantity: 4, unitPriceCents: item.sellPriceCents }],
+    }).expect(201);
+    assert.equal(sold.body.totalCents, 15000);
+    const detail = await admin.get(`/api/purchases/${sold.body.id}`).expect(200);
+    assert.equal(detail.body.direction, 'sell');
+    assert.equal(detail.body.items[0].unitPriceCents, 3750);
+    await admin.get('/api/purchases?direction=sell').expect(200)
+      .then(result => { assert.equal(result.body.total, 1); assert.equal(result.body.items[0].direction, 'sell'); });
+    await admin.get('/api/purchases?direction=buy').expect(200)
+      .then(result => { assert.equal(result.body.total, 0); });
+    await admin.get('/api/purchases?direction=all').expect(200)
+      .then(result => { assert.equal(result.body.total, 1); });
+    await admin.get('/api/purchases?direction=unknown').expect(400);
+    const wrongPrice = await admin.post('/api/purchases').set('X-CSRF-Token', csrf).send({
+      direction: 'sell', personId: p.id, requestId: randomUUID(),
+      items: [{ productId: item.id, quantity: 1, unitPriceCents: item.buyPriceCents }],
+    }).expect(409);
+    assert.match(wrongPrice.body.error, /zwischenzeitlich geändert/);
+    const stats = await admin.get('/api/stats').expect(200);
+    assert.equal(stats.body.purchaseCount, 0);
+    assert.equal(stats.body.saleCount, 1);
+    assert.equal(stats.body.purchaseTotalCents, 0);
+    assert.equal(stats.body.saleTotalCents, 15000);
   });
 
   it('speichert wiederholte Requests nur einmal und erkennt abweichende Wiederholungen', async () => {
@@ -222,5 +263,36 @@ describe('8BG API', () => {
     await request(restarted).get('/api/auth/status').expect(200, { needsSetup: false });
     const rows = db.prepare('SELECT COUNT(*) AS n FROM sessions').get();
     assert.equal(rows!.n, 1);
+  });
+
+  it('migriert bestehende Datenbanken und übernimmt alte Preise als sicheren Startwert für Verkäufe', () => {
+    const legacyDir = mkdtempSync(path.join(tmpdir(), '8bg-legacy-'));
+    const legacy = openDatabase(legacyDir);
+    try {
+      const userId = randomUUID();
+      const personId = randomUUID();
+      const productId = randomUUID();
+      const purchaseId = randomUUID();
+      legacy.prepare('INSERT INTO users (id,username,password_hash,role) VALUES (?,?,?,?)')
+        .run(userId, 'legacy', 'unused', 'admin');
+      legacy.prepare('INSERT INTO persons (id,name) VALUES (?,?)').run(personId, 'Historische Person');
+      legacy.prepare('INSERT INTO products (id,name,price_cents,sale_price_cents) VALUES (?,?,?,?)')
+        .run(productId, 'Historischer Weizen', 72000, 81000);
+      legacy.prepare(`INSERT INTO purchases
+        (id,person_id,person_name,created_by,direction,total_cents,request_id,request_hash) VALUES (?,?,?,?,?,?,?,?)`)
+        .run(purchaseId, personId, 'Historische Person', userId, 'buy', 72000, randomUUID(), 'legacy');
+      legacy.exec('DROP INDEX idx_purchases_direction_created');
+      legacy.exec('ALTER TABLE products DROP COLUMN sale_price_cents');
+      legacy.exec('ALTER TABLE purchases DROP COLUMN direction');
+      legacy.close();
+      const migrated = openDatabase(legacyDir);
+      try {
+        assert.equal((migrated.prepare('SELECT sale_price_cents AS value FROM products WHERE id=?').get(productId) as { value: number }).value, 72000);
+        assert.equal((migrated.prepare('SELECT direction FROM purchases WHERE id=?').get(purchaseId) as { direction: string }).direction, 'buy');
+      } finally { migrated.close(); }
+    } finally {
+      try { legacy.close(); } catch { /* The connection is already closed after migration. */ }
+      rmSync(legacyDir, { recursive: true, force: true });
+    }
   });
 });

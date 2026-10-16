@@ -1,14 +1,14 @@
 # 8BG · Handelsverwaltung
 
-Eine deutschsprachige Mehrbenutzer-Webanwendung für RP-Personenakten, Produkte und Ankäufe. Dunkles Design mit lila Akzenten, Seitenleiste und responsiven Personenkarten.
+Eine deutschsprachige Mehrbenutzer-Webanwendung für RP-Personenakten, Produkte, Ankäufe und Verkäufe. Dunkles Design mit lila Akzenten, Seitenleiste und responsiven Personenkarten.
 
 ## Funktionen
 
 - **Personen:** Kartenansicht, Suche nach Name/Telefon/Notiz, Detailansicht, Bearbeiten und Archivieren. Gespeichert werden Name, Geburtsdatum, Telefonnummer und Notizen.
 - **RP-Ausweise:** PNG, JPG oder WebP hochladen; tatsächliches Bildformat wird geprüft. Speicherung ausschließlich als neu erzeugtes WebP ohne Original-Metadaten. Lokale deutsche Texterkennung mit Tesseract; Name und Geburtsdatum werden zur manuellen Prüfung übernommen. Es werden keine Ausweisbilder an Cloud- oder KI-Dienste übermittelt.
-- **Produkte:** Namen und Ankaufpreise anlegen, bearbeiten und deaktivieren. Die Datenbank startet bewusst ohne erfundene Geschäftsdaten.
-- **Ankaufrechner:** Person auswählen, ganzzahlige Mengen eingeben oder addieren, Einzel-/Gesamtsummen berechnen und den Ankauf mit optionaler Notiz speichern. Währung: RP-Dollar (`$`), Preise mit zwei Nachkommastellen.
-- **Verlauf:** Paginiert, mit Einzelpositionen, Person, erfassendem Benutzer und Zeitpunkt. Personen-/Produktnamen und Preise werden als historischer Stand gespeichert. Ankäufe können nicht nachträglich verändert oder gelöscht werden.
+- **Produkte:** Namen sowie getrennte Ankauf- und Verkaufspreise anlegen und bearbeiten; Produkte deaktivieren, ohne sie aus der Historie zu entfernen. Die Datenbank startet bewusst ohne erfundene Geschäftsdaten.
+- **An- & Verkauf:** Buchungsrichtung ausdrücklich wählen. Beim Ankauf kauft der Betrieb Produkte von der gewählten Person und erfasst die Auszahlung zum Ankaufpreis. Beim Verkauf verkauft er Produkte an die Person und erfasst die Einnahme zum Verkaufspreis. In beiden Richtungen Person, Mengen, Gesamtsumme und optionale Notiz dokumentieren. Währung: RP-Dollar (`$`), Preise mit zwei Nachkommastellen.
+- **Verlauf:** Paginiert, mit Filter für Ankäufe, Verkäufe oder beide. Jede Buchung zeigt Richtung, Einzelpositionen, Person, erfassenden Benutzer und Zeitpunkt. Dashboard und Verlauf weisen Auszahlungen und Einnahmen getrennt aus. Personen-/Produktnamen und Preise werden als historischer Stand gespeichert. Buchungen können nicht nachträglich verändert oder gelöscht werden.
 - **Team:** Login, Administrator-/Mitarbeiterrollen, zusätzliche Zugänge, Passwortwechsel und administrativer Passwort-Reset.
 
 ## Lokal starten
@@ -38,12 +38,12 @@ Frontend: **http://127.0.0.1:5173**, Backend: **http://127.0.0.1:3001**. Vite le
 
 ## Bedienung
 
-1. Unter **Einstellungen** Teamzugänge anlegen. Administratoren können zusätzlich Produkte und Benutzer verwalten. Mitarbeiter können Personen und Ankäufe erfassen und den gemeinsamen Verlauf einsehen.
-2. Unter **Produkte** Produktnamen und Ankaufpreise pro Einheit eintragen.
+1. Unter **Einstellungen** Teamzugänge anlegen. Administratoren können zusätzlich Produkte und Benutzer verwalten. Mitarbeiter können Personen, An- und Verkäufe erfassen und den gemeinsamen Verlauf einsehen.
+2. Unter **Produkte** Produktnamen sowie getrennte Ankaufs- und Verkaufspreise pro Einheit eintragen.
 3. Unter **Personen** eine Akte erstellen. Optional einen **fiktiven RP-Ausweis** hochladen. Nach der Erkennung die vorgeschlagenen Daten kontrollieren, fehlende Angaben ergänzen und die Prüfung bestätigen.
-4. Unter **Ankauf** Mengen eintragen. Das zusätzliche Mengenfeld mit `+` addiert die angegebene Menge; ohne Angabe wird `1` addiert.
-5. Die Person auswählen und **Ankauf speichern**. Der Server prüft die Produkte und aktuellen Preise und berechnet alle Beträge selbst in ganzzahligen Cent.
-6. Unter **Verlauf** die Buchung und ihre Einzelpositionen aufrufen.
+4. Unter **Handel** zuerst **Ankauf** (Betrieb kauft von der Person) oder **Verkauf** (Betrieb verkauft an die Person) wählen und dann Mengen eintragen. Das zusätzliche Mengenfeld mit `+` addiert die angegebene Menge; ohne Angabe wird `1` addiert. Preis und Auszahlung/Einnahme wechseln passend zur Richtung.
+5. Die beteiligte Person auswählen und den passenden An- oder Verkauf speichern. Der Server prüft Richtung, Produkte und zugehörige Preise und berechnet alle Beträge selbst in ganzzahligen Cent.
+6. Unter **Verlauf** Ankäufe oder Verkäufe filtern und Richtung sowie Einzelpositionen aufrufen.
 
 Ändert jemand zwischenzeitlich einen Produktpreis, wird der Ankauf mit einem Hinweis abgelehnt. Seite neu laden und Betrag erneut prüfen. Wiederholtes Absenden derselben Buchung erzeugt keine Doppelbuchung.
 
