@@ -140,11 +140,6 @@ describe('8BG API', () => {
     await admin.get('/api/purchases?direction=all').expect(200)
       .then(result => { assert.equal(result.body.total, 1); });
     await admin.get('/api/purchases?direction=unknown').expect(400);
-    const wrongPrice = await admin.post('/api/purchases').set('X-CSRF-Token', csrf).send({
-      direction: 'sell', personId: p.id, requestId: randomUUID(),
-      items: [{ productId: item.id, quantity: 1, unitPriceCents: item.buyPriceCents }],
-    }).expect(409);
-    assert.match(wrongPrice.body.error, /zwischenzeitlich geändert/);
     const stats = await admin.get('/api/stats').expect(200);
     assert.equal(stats.body.purchaseCount, 0);
     assert.equal(stats.body.saleCount, 1);
@@ -162,7 +157,7 @@ describe('8BG API', () => {
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM purchases').get()!.n, 1);
   });
 
-  it('weist ungültige Mengen, doppelte Produkte und geänderte Preise zurück', async () => {
+  it('weist ungültige Mengen, doppelte Produkte und ungültige Buchungspreise zurück', async () => {
     const p = await person(); const item = await product();
     for (const quantity of [0, -1, 1.5, 1000001]) {
       await admin.post('/api/purchases').set('X-CSRF-Token', csrf).send({
@@ -171,8 +166,47 @@ describe('8BG API', () => {
     }
     const line = { productId: item.id, quantity: 1, unitPriceCents: item.priceCents };
     await admin.post('/api/purchases').set('X-CSRF-Token', csrf).send({ personId: p.id, requestId: randomUUID(), items: [line, line] }).expect(400);
-    await admin.post('/api/purchases').set('X-CSRF-Token', csrf).send({ personId: p.id, requestId: randomUUID(), items: [{ ...line, unitPriceCents: 1 }] }).expect(409);
+    for (const unitPriceCents of [-1, 1.5, 100000001, '72000', null]) {
+      await admin.post('/api/purchases').set('X-CSRF-Token', csrf).send({
+        personId: p.id, requestId: randomUUID(), items: [{ ...line, unitPriceCents }],
+      }).expect(400);
+    }
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM purchases').get()!.n, 0);
+  });
+
+  it('erlaubt individuelle Preise für Mitarbeiter in beiden Richtungen ohne Stammdaten zu verändern', async () => {
+    const p = await person();
+    const item = await product();
+    const { agent, token } = await member();
+    for (const direction of ['buy', 'sell']) {
+      const body = {
+        direction, personId: p.id, requestId: randomUUID(),
+        items: [{ productId: item.id, quantity: 3, unitPriceCents: 12345 }],
+      };
+      const result = await agent.post('/api/purchases').set('X-CSRF-Token', token).send(body).expect(201);
+      assert.equal(result.body.totalCents, 37035);
+      const repeat = await agent.post('/api/purchases').set('X-CSRF-Token', token).send(body).expect(200);
+      assert.equal(repeat.body.id, result.body.id);
+      await agent.post('/api/purchases').set('X-CSRF-Token', token)
+        .send({ ...body, items: [{ ...body.items[0], unitPriceCents: 12346 }] }).expect(409);
+      const detail = await agent.get(`/api/purchases/${result.body.id}`).expect(200);
+      assert.equal(detail.body.direction, direction);
+      assert.equal(detail.body.items[0].unitPriceCents, 12345);
+      assert.equal(detail.body.items[0].totalCents, 37035);
+    }
+    const products = await agent.get('/api/products').expect(200);
+    assert.equal(products.body[0].buyPriceCents, 72000);
+    assert.equal(products.body[0].sellPriceCents, 72000);
+    await admin.put(`/api/products/${item.id}`).set('X-CSRF-Token', csrf)
+      .send({ name: item.name, buyPriceCents: 80000, sellPriceCents: 90000, active: true }).expect(200);
+    const zero = await agent.post('/api/purchases').set('X-CSRF-Token', token).send({
+      direction: 'sell', personId: p.id, requestId: randomUUID(),
+      items: [{ productId: item.id, quantity: 1, unitPriceCents: 0 }],
+    }).expect(201);
+    assert.equal(zero.body.totalCents, 0);
+    const stats = await agent.get('/api/stats').expect(200);
+    assert.equal(stats.body.purchaseTotalCents, 37035);
+    assert.equal(stats.body.saleTotalCents, 37035);
   });
 
   it('weist inaktive Produkte, archivierte Personen und überhöhte Beträge zurück', async () => {

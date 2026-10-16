@@ -2089,6 +2089,15 @@ details summary {
     scroll-behavior: auto!important
   }
 }
+.unit-price-input {
+  width: 115px;
+  text-align: right;
+  font-size: 11px;
+  padding: 9px 10px
+}
+.unit-price-input[aria-invalid="true"] {
+  border-color: #c85f78
+}
 .direction-switch {
   display: grid;
   grid-template-columns: repeat(2,minmax(0,1fr));

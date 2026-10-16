@@ -368,13 +368,10 @@ export function createApp(options: AppOptions) {
       const person = db.prepare('SELECT name FROM persons WHERE id=? AND archived=0').get(data.personId) as { name: string } | undefined;
       if (!person) throw new HttpError(400, 'Bitte eine aktive Person auswählen.');
       const items = data.items.map(item => {
-        const product = db.prepare('SELECT name,price_cents,sale_price_cents FROM products WHERE id=? AND active=1')
-          .get(item.productId) as { name: string; price_cents: number; sale_price_cents: number } | undefined;
+        const product = db.prepare('SELECT name FROM products WHERE id=? AND active=1')
+          .get(item.productId) as { name: string } | undefined;
         if (!product) throw new HttpError(409, 'Ein Produkt ist nicht mehr verfügbar. Bitte Produkte neu laden.');
-        const priceCents = data.direction === 'buy' ? product.price_cents : product.sale_price_cents;
-        if (priceCents !== item.unitPriceCents) {
-          throw new HttpError(409, 'Ein Produktpreis wurde zwischenzeitlich geändert. Bitte die Seite neu laden und den Betrag erneut prüfen.');
-        }
+        const priceCents = item.unitPriceCents;
         return { ...item, name: product.name, priceCents, total: priceCents * item.quantity };
       });
       const totalCents = items.reduce((sum, item) => sum + item.total, 0);

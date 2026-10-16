@@ -42,10 +42,10 @@ Frontend: **http://127.0.0.1:5173**, Backend: **http://127.0.0.1:3001**. Vite le
 2. Unter **Produkte** Produktnamen sowie getrennte Ankaufs- und Verkaufspreise pro Einheit eintragen.
 3. Unter **Personen** eine Akte erstellen. Optional einen **fiktiven RP-Ausweis** hochladen. Nach der Erkennung die vorgeschlagenen Daten kontrollieren, fehlende Angaben ergänzen und die Prüfung bestätigen.
 4. Unter **Handel** zuerst **Ankauf** (Betrieb kauft von der Person) oder **Verkauf** (Betrieb verkauft an die Person) wählen und dann Mengen eintragen. Das zusätzliche Mengenfeld mit `+` addiert die angegebene Menge; ohne Angabe wird `1` addiert. Preis und Auszahlung/Einnahme wechseln passend zur Richtung.
-5. Die beteiligte Person auswählen und den passenden An- oder Verkauf speichern. Der Server prüft Richtung, Produkte und zugehörige Preise und berechnet alle Beträge selbst in ganzzahligen Cent.
+5. Die Stückpreise sind mit den Produktpreisen der gewählten Richtung vorbelegt. Als angemeldetes Teammitglied kannst du sie für die aktuelle Buchung ändern (0 bis 1.000.000 $ je Einheit, maximal zwei Nachkommastellen). Produktstammpreise bleiben unverändert. Die beteiligte Person auswählen und den passenden An- oder Verkauf speichern. Der Server validiert Richtung, aktive Produkte und eingegebene Preise und berechnet alle Beträge selbst in ganzzahligen Cent.
 6. Unter **Verlauf** Ankäufe oder Verkäufe filtern und Richtung sowie Einzelpositionen aufrufen.
 
-Ändert jemand zwischenzeitlich einen Produktpreis, wird der Ankauf mit einem Hinweis abgelehnt. Seite neu laden und Betrag erneut prüfen. Wiederholtes Absenden derselben Buchung erzeugt keine Doppelbuchung.
+Gespeichert werden die im Rechner bestätigten Stückpreise, auch wenn sie vom Produktstandard abweichen oder dieser zwischenzeitlich geändert wurde. Der Verlauf behält diese Preise dauerhaft bei. „Rechner zurücksetzen“, ein Richtungswechsel und erfolgreiches Speichern entfernen individuelle Preise und belegen die Felder wieder mit den jeweiligen Produktpreisen. Wiederholtes Absenden derselben Buchung erzeugt keine Doppelbuchung.
 
 ### Ausweiserkennung und Grenzen
 
