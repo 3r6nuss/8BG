@@ -84,6 +84,7 @@ export function createApp(options: AppOptions) {
   const reportHealth = createHealthReporter(db, dataDir);
   const bootstrapHash = hashToken(bootstrapToken);
   const dummyPassword = hashPassword(randomUUID());
+  const dummyPin = hashPassword(randomUUID());
   let scanning = false;
   const attempts = new Map<string, { count: number; until: number }>();
   app.disable('x-powered-by');
@@ -127,9 +128,12 @@ export function createApp(options: AppOptions) {
     res.status(health.status === 'down' ? 503 : 200).json(health);
   });
   app.get('/api/auth/status', (_req, res) => {
-    res.json({ needsSetup: !db.prepare('SELECT id FROM users LIMIT 1').get() });
+    res.json({
+      needsSetup: !db.prepare('SELECT id FROM users LIMIT 1').get(),
+      pinEnabled: Boolean(db.prepare("SELECT id FROM users WHERE role='admin' AND pin_hash IS NOT NULL LIMIT 1").get()),
+    });
   });
-  app.use(['/api/auth/login', '/api/auth/setup'], (req, res, next) => {
+  app.use(['/api/auth/login', '/api/auth/pin-login', '/api/auth/setup'], (req, res, next) => {
     if (req.method !== 'POST') return next();
     if (!req.is('application/json')) throw new HttpError(415, 'JSON-Anfrage erforderlich.');
     const now = Date.now();
@@ -145,14 +149,22 @@ export function createApp(options: AppOptions) {
     next();
   });
   app.post('/api/auth/setup', async (req, res) => {
-    const data = credentials.extend({ token: z.string().min(1).max(200) }).parse(req.body);
+    const setupSchema = credentials.extend({
+      token: z.string().min(1).max(200),
+      pin: z.string().regex(/^\d{6}$/).or(z.literal('')).default(''),
+      pinConfirmation: z.string().default(''),
+    }).refine(data => data.pin === data.pinConfirmation, {
+      message: 'Die PINs stimmen nicht überein.', path: ['pinConfirmation'],
+    });
+    const data = setupSchema.parse(req.body);
     if (hashToken(data.token) !== bootstrapHash) throw new HttpError(403, 'Der Einrichtungsschlüssel ist ungültig.');
     const passwordHash = await hashPassword(data.password);
+    const pinHash = data.pin ? await hashPassword(data.pin) : null;
     const user: User = { id: randomUUID(), username: data.username, role: 'admin' };
     transaction(db, () => {
       if (db.prepare('SELECT id FROM users LIMIT 1').get()) throw new HttpError(409, 'Die Einrichtung wurde bereits abgeschlossen.');
-      db.prepare('INSERT INTO users (id,username,password_hash,role) VALUES (?,?,?,?)')
-        .run(user.id, user.username, passwordHash, user.role);
+      db.prepare('INSERT INTO users (id,username,password_hash,pin_hash,role) VALUES (?,?,?,?,?)')
+        .run(user.id, user.username, passwordHash, pinHash, user.role);
     });
     const csrfToken = issueSession(db, res, user.id, secureCookie);
     res.status(201).json({ user, csrfToken });
@@ -163,6 +175,18 @@ export function createApp(options: AppOptions) {
       .get(data.username) as (User & { password_hash: string }) | undefined;
     const valid = await verifyPassword(data.password, row?.password_hash ?? await dummyPassword);
     if (!row || !valid) throw new HttpError(401, 'Benutzername oder Passwort ist falsch.');
+    const user: User = { id: row.id, username: row.username, role: row.role };
+    res.json({ user, csrfToken: issueSession(db, res, user.id, secureCookie) });
+  });
+  app.post('/api/auth/pin-login', async (req, res) => {
+    const data = z.object({
+      username: credentials.shape.username,
+      pin: z.string().regex(/^\d{6}$/, 'Die PIN muss aus sechs Ziffern bestehen.'),
+    }).parse(req.body);
+    const row = db.prepare('SELECT id,username,role,pin_hash FROM users WHERE username=?')
+      .get(data.username) as (User & { pin_hash: string | null }) | undefined;
+    const valid = await verifyPassword(data.pin, row?.pin_hash ?? await dummyPin);
+    if (!row?.pin_hash || !valid) throw new HttpError(401, 'Benutzername oder PIN ist falsch.');
     const user: User = { id: row.id, username: row.username, role: row.role };
     res.json({ user, csrfToken: issueSession(db, res, user.id, secureCookie) });
   });

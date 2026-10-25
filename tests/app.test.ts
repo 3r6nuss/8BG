@@ -26,7 +26,9 @@ describe('8BG API', () => {
       recognize: async () => 'NAME:\nAlex Sommer\nGEBURTSDATUM:\n2004/08/04',
     });
     admin = request.agent(app);
-    const setup = await admin.post('/api/auth/setup').send({ token: 'test-setup-token', username: 'admin', password }).expect(201);
+    const setup = await admin.post('/api/auth/setup').send({
+      token: 'test-setup-token', username: 'admin', password, pin: '123456', pinConfirmation: '123456',
+    }).expect(201);
     csrf = setup.body.csrfToken;
   });
   afterEach(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
@@ -86,6 +88,11 @@ describe('8BG API', () => {
     assert.match(login.headers['set-cookie'][0], /HttpOnly/);
     assert.match(login.headers['set-cookie'][0], /SameSite=Strict/);
     assert.equal(db.prepare('SELECT password_hash FROM users').get()!.password_hash === password, false);
+    const pinLogin = await request(app).post('/api/auth/pin-login').send({ username: 'admin', pin: '123456' }).expect(200);
+    assert.equal(pinLogin.body.user.username, 'admin');
+    await request(app).post('/api/auth/pin-login').send({ username: 'admin', pin: '654321' }).expect(401);
+    const pinHash = db.prepare('SELECT pin_hash FROM users').get() as { pin_hash: string };
+    assert.notEqual(pinHash.pin_hash, '123456');
   });
 
   it('beschränkt Mitarbeiterrechte, erlaubt aber Personen und Ankäufe', async () => {
@@ -312,7 +319,7 @@ describe('8BG API', () => {
     db.close(); db = openDatabase(dir);
     const restarted = createApp({ db, dataDir: dir, bootstrapToken: 'new-token' });
     assert.equal(db.prepare('SELECT name FROM persons WHERE id=?').get(p.id)!.name, 'Alex Sommer');
-    await request(restarted).get('/api/auth/status').expect(200, { needsSetup: false });
+    await request(restarted).get('/api/auth/status').expect(200, { needsSetup: false, pinEnabled: true });
     const rows = db.prepare('SELECT COUNT(*) AS n FROM sessions').get();
     assert.equal(rows!.n, 1);
   });

@@ -20,6 +20,7 @@ function currentPage(): Page { return pages.find(page => page.id === window.loca
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [pinEnabled, setPinEnabled] = useState(false);
   const [booting, setBooting] = useState(true);
   const [bootError, setBootError] = useState('');
   const [retry, setRetry] = useState(0);
@@ -27,9 +28,10 @@ export function App() {
     let current = true;
     setBooting(true); setBootError('');
     async function load() {
-      const status = await api<{ needsSetup: boolean }>('/auth/status');
+      const status = await api<{ needsSetup: boolean; pinEnabled: boolean }>('/auth/status');
       if (!current) return;
       setNeedsSetup(status.needsSetup);
+      setPinEnabled(status.pinEnabled);
       if (!status.needsSetup) {
         try {
           const result = await api<Session>('/auth/me');
@@ -48,7 +50,10 @@ export function App() {
   }, []);
   if (booting) return <div className="boot-screen"><div className="brand-mark">8</div><Spinner /><span>Dein Kontor wird vorbereitet …</span></div>;
   if (bootError) return <div className="boot-screen"><ErrorBox message={bootError} /><button className="button primary" onClick={() => setRetry(value => value + 1)}><RefreshCw size={16} />Erneut versuchen</button></div>;
-  if (!session) return <Auth needsSetup={needsSetup} onLogin={result => { setSession(result); setNeedsSetup(false); }} />;
+  if (!session) return <Auth needsSetup={needsSetup} pinEnabled={pinEnabled} onLogin={(result, configuredPin) => {
+    setSession(result); setNeedsSetup(false);
+    if (configuredPin !== undefined) setPinEnabled(configuredPin);
+  }} />;
   return <Workspace session={session} onLogout={() => { setSession(null); setCsrfToken(''); }} />;
 }
 

@@ -27,17 +27,18 @@ export function ErrorBox({ message }: { message: string }) {
   return <div className="notice error" role="alert"><AlertCircle size={18} /><span>{message}</span></div>;
 }
 
-export function Auth({ needsSetup, onLogin }: { needsSetup: boolean; onLogin: (session: Session) => void }) {
+export function Auth({ needsSetup, pinEnabled, onLogin }: { needsSetup: boolean; pinEnabled: boolean; onLogin: (session: Session, pinEnabled?: boolean) => void }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pinLogin, setPinLogin] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(''); setBusy(true);
     const form = new FormData(event.currentTarget);
     try {
-      const session = await api<Session>(needsSetup ? '/auth/setup' : '/auth/login', {
+      const session = await api<Session>(needsSetup ? '/auth/setup' : pinLogin ? '/auth/pin-login' : '/auth/login', {
         method: 'POST', body: JSON.stringify(Object.fromEntries(form)),
       });
-      setCsrfToken(session.csrfToken); onLogin(session);
+      setCsrfToken(session.csrfToken); onLogin(session, needsSetup ? Boolean(form.get('pin')) : undefined);
     } catch (error) { setError(error instanceof Error ? error.message : 'Anmeldung fehlgeschlagen.'); }
     finally { setBusy(false); }
   }
@@ -48,9 +49,18 @@ export function Auth({ needsSetup, onLogin }: { needsSetup: boolean; onLogin: (s
     <form onSubmit={submit}>
       {needsSetup && <label>Einrichtungsschlüssel<input name="token" autoComplete="off" required placeholder="Aus dem Server-Terminal" /></label>}
       <label>Benutzername<input name="username" autoComplete="username" minLength={3} maxLength={40} pattern="[a-zA-Z0-9_.\-]+" required placeholder="Dein Benutzername" autoFocus /></label>
-      <label>Passwort<input type="password" name="password" autoComplete={needsSetup ? 'new-password' : 'current-password'} minLength={12} maxLength={128} required placeholder="Mindestens 12 Zeichen" /></label>
+      {needsSetup || !pinLogin
+        ? <label>Passwort<input type="password" name="password" autoComplete={needsSetup ? 'new-password' : 'current-password'} minLength={12} maxLength={128} required placeholder="Mindestens 12 Zeichen" /></label>
+        : <label>PIN<input type="password" name="pin" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} autoComplete="off" required placeholder="6 Ziffern" /></label>}
+      {needsSetup && <>
+        <label>PIN für die Anmeldung (optional)<input type="password" name="pin" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} autoComplete="off" placeholder="6 Ziffern" /></label>
+        <label>PIN wiederholen<input type="password" name="pinConfirmation" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} autoComplete="off" /></label>
+      </>}
       {error && <ErrorBox message={error} />}
       <button className="button primary full" disabled={busy}>{busy ? <Spinner /> : <ShieldCheck size={18} />}{needsSetup ? 'Administration einrichten' : 'Sicher anmelden'}</button>
+      {!needsSetup && pinEnabled && <button type="button" className="button subtle full" onClick={() => { setPinLogin(value => !value); setError(''); }}>
+        {pinLogin ? 'Mit Passwort anmelden' : 'Mit PIN anmelden'}
+      </button>}
     </form><div className="auth-footer"><ShieldCheck size={14} /> Zentrale Speicherung · Lokale Ausweiserkennung</div>
   </div><span className="auth-bottom">PERSONEN. PRODUKTE. ALLES IM BLICK.</span></main>;
 }
