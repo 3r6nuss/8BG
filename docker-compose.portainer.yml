@@ -4,18 +4,22 @@ services:
     restart: unless-stopped
     init: true
     environment:
-      APP_ORIGIN: https://8bg.3r6nuss.de
-      COOKIE_SECURE: "1"
+      NODE_ENV: production
+      PORT: "3000"
+      DATA_DIR: /app/data
+      SESSION_SECRET: ${SESSION_SECRET:?Bitte einen zufaelligen Session-Schluessel mit mindestens 32 Zeichen setzen}
+      SETUP_KEY: ${SETUP_KEY:?Bitte einen zufaelligen Einrichtungsschluessel mit mindestens 32 Zeichen setzen}
       HEALTH_TOKEN: ${HEALTH_TOKEN:?Bitte einen zufaelligen Health-Token mit mindestens 32 Zeichen setzen}
     volumes:
-      - data:/app/data
+      - ivy_data:/app/data
     networks:
       proxy:
         aliases:
           - 8bg-web
 
 volumes:
-  data:
+  ivy_data:
+    name: 8bg_ivy_data
 
 networks:
   proxy:

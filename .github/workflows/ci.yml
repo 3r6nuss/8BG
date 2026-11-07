@@ -1,4 +1,4 @@
-name: Build and tests
+name: Portal checks
 on:
   push:
   pull_request:
