@@ -32,7 +32,7 @@ npm start
 
 ## Portainer, Nginx Proxy Manager und Cloudflare
 
-Die Portainer-Datei ist auf **https://8bg.3r6nuss.de** und das vorhandene Docker-Netzwerk **`nginx-proxy-manager_default`** eingestellt. Wenn Domain oder Netzwerk bei dir anders heißen, passe die genannten Stellen vor dem Deploy an. Port 3000 wird nicht am Host veröffentlicht; NPM erreicht den Container intern über den Alias `8bg-web`.
+Die Portainer-Datei ist auf **https://8bg.3r6nuss.de** und das vorhandene Docker-Netzwerk **`nginx-proxy-manager_default`** eingestellt. Wenn Domain oder Netzwerk bei dir anders heißen, passe die genannten Stellen vor dem Deploy an. Port 3001 wird nicht am Host veröffentlicht; NPM erreicht den Container intern unter `http://8bg-web-1:3001`.
 
 ### 1. Image automatisch veröffentlichen
 
@@ -69,11 +69,11 @@ Einen **Proxy Host** anlegen:
 
 - **Domain Names:** `8bg.3r6nuss.de`
 - **Scheme:** `http`
-- **Forward Hostname / IP:** `8bg-web`
-- **Forward Port:** `3000`
+- **Forward Hostname / IP:** `8bg-web-1`
+- **Forward Port:** `3001`
 - **SSL:** Let's Encrypt-Zertifikat anfordern und **Force SSL** aktivieren
 
-NPM und das Portal müssen mit dem Docker-Netzwerk `nginx-proxy-manager_default` verbunden sein. Von außen nur die benötigten Ports 80 und 443 zum Proxy weiterleiten. Port 3000, Portainer und die NPM-Verwaltungsoberfläche nicht öffentlich freigeben.
+NPM und das Portal müssen mit dem Docker-Netzwerk `nginx-proxy-manager_default` verbunden sein. Von außen nur die benötigten Ports 80 und 443 zum Proxy weiterleiten. Port 3001, Portainer und die NPM-Verwaltungsoberfläche nicht öffentlich freigeben.
 
 ### 4. Cloudflare
 

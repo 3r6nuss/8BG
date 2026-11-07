@@ -6,7 +6,7 @@ services:
     init: true
     environment:
       NODE_ENV: production
-      PORT: "3000"
+      PORT: "3001"
       DATA_DIR: /app/data
       SESSION_SECRET: ${SESSION_SECRET:?Bitte einen zufaelligen Session-Schluessel mit mindestens 32 Zeichen setzen}
       SETUP_KEY: ${SETUP_KEY:?Bitte einen zufaelligen Einrichtungsschluessel mit mindestens 32 Zeichen setzen}
@@ -17,6 +17,7 @@ services:
       proxy:
         aliases:
           - 8bg-web
+          - 8bg-web-1
 
 volumes:
   ivy_data:
