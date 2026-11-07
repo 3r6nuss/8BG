@@ -34,23 +34,19 @@ npm start
 
 Die Portainer-Datei ist auf **https://8bg.3r6nuss.de** und das vorhandene Docker-Netzwerk **`nginx-proxy-manager_default`** eingestellt. Wenn Domain oder Netzwerk bei dir anders heißen, passe die genannten Stellen vor dem Deploy an. Port 3000 wird nicht am Host veröffentlicht; NPM erreicht den Container intern über den Alias `8bg-web`.
 
-### 1. Image auf dem Docker-Server bauen
+### 1. Image automatisch veröffentlichen
 
-Die Befehle im SSH-Terminal des Linux-Servers ausführen, den Portainer verwaltet:
+Der GitHub-Actions-Workflow testet und veröffentlicht das Docker-Image bei jedem
+Push auf `main` nach **`ghcr.io/3r6nuss/8bg:latest`**. Versionstags (`v*`)
+werden ebenfalls als Image-Tag veröffentlicht. Im GitHub-Repository unter
+**Actions** muss der Workflow erfolgreich durchlaufen.
 
-```sh
-git clone https://github.com/3r6nuss/8BG.git
-cd 8BG
-docker build -t 8bg:local .
-```
-
-Bei einem vorhandenen Checkout:
-
-```sh
-cd 8BG
-git pull --ff-only
-docker build -t 8bg:local .
-```
+Beim ersten erfolgreichen Lauf wird das Paket
+[`ghcr.io/3r6nuss/8bg`](https://github.com/users/3r6nuss/packages/container/package/8bg)
+angelegt. Falls Portainer das Image ohne Registry-Login abrufen soll, das Paket
+einmalig in GitHub unter **Package settings → Change visibility → Public**
+öffentlich stellen. Das GitHub-Repository ist öffentlich; die Sichtbarkeit des
+Container-Pakets wird dadurch nicht automatisch öffentlich.
 
 ### 2. Portainer-Stack bereitstellen
 
@@ -62,7 +58,7 @@ docker build -t 8bg:local .
    - `HEALTH_TOKEN`
 
    Jeder Wert muss mindestens 32 Zeichen lang sein. Auf dem Server lassen sich Werte mit `openssl rand -hex 32` erzeugen. Die Werte niemals in Git speichern oder veröffentlichen.
-4. Den Stack deployen. Das Image `8bg:local` ist lokal gebaut; nicht aus einer Registry ziehen lassen.
+4. Den Stack deployen. Portainer zieht `ghcr.io/3r6nuss/8bg:latest` aus GHCR. Falls das Paket privat bleiben soll, zuerst in Portainer unter **Registries** ein GHCR-Zugang mit einem GitHub-Personal-Access-Token mit `read:packages` einrichten.
 5. In den Container-Logs prüfen, dass das Portal startet. Der erste Einrichtungsschlüssel wird nicht automatisch angezeigt: Der im Stack gesetzte `SETUP_KEY` ist der Schlüssel für die Ersteinrichtung.
 
 Das Portal verwendet ein neues, separates Docker-Volume **`8bg_ivy_data`**. Das vorherige Volume **`8bg_data`** wird nicht eingebunden oder gelöscht. Vor dem Entfernen oder Migrieren alter Volumes zuerst ein Backup erstellen. Das Datenvolume des neuen Portals bei Updates beibehalten; für Backups den Stack stoppen und das gesamte Volume sichern.
@@ -101,14 +97,12 @@ Eine Cloudflare-Access-Anmeldeseite oder Browser-Challenge vor `/api/health` ver
 
 ### Updates
 
-Im Server-Checkout:
-
-```sh
-git pull --ff-only
-docker build -t 8bg:local .
-```
-
-Danach den Stack in Portainer mit dem lokalen Image neu erstellen, ohne das Volume `8bg_ivy_data` zu entfernen. Vor dem Update ein Backup anlegen.
+Änderungen auf `main` starten automatisch den Test- und Image-Workflow. Sobald
+der Lauf erfolgreich ist, in Portainer den Stack erneut deployen, damit
+`pull_policy: always` die neue `latest`-Version abruft. Bei einem Stack aus dem
+Web-Editor vorher auch dessen Compose-Datei auf den aktuellen Inhalt von
+[docker-compose.portainer.yml](./docker-compose.portainer.yml) aktualisieren.
+Das Volume `8bg_ivy_data` nicht entfernen. Vor dem Update ein Backup anlegen.
 
 ## Daten und Sicherheit
 

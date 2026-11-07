@@ -1,6 +1,7 @@
 services:
   web:
-    image: 8bg:local
+    image: ghcr.io/3r6nuss/8bg:latest
+    pull_policy: always
     restart: unless-stopped
     init: true
     environment:
