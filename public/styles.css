@@ -144,6 +144,7 @@ tbody tr:hover { background: #ffffff03; }
 .table-user { display: flex; align-items: center; gap: 9px; }
 .role-pill, .state-pill { display: inline-block; border: 1px solid var(--line); border-radius: 20px; background: #ffffff04; padding: 4px 8px; color: #c6c2d0; font-size: 9px; white-space: nowrap; }
 .role-owner { border-color: #a68aff33; color: #c3adff; }
+.role-admin { border-color: #ffbd8050; color: #ffc98f; }
 .role-manager { border-color: #66c6a230; color: #85d9b4; }
 .state-active { border-color: #61d39a2e; background: #61d39a0b; color: #83dcb1; }
 .state-inactive { border-color: #ff82912e; color: #e59aa3; }

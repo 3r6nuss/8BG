@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS users (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
  password_hash TEXT NOT NULL,
- role TEXT NOT NULL CHECK(role IN ('owner','manager','staff','reader')),
+ role TEXT NOT NULL CHECK(role IN ('owner','admin','manager','staff','reader')),
  permissions TEXT NOT NULL DEFAULT '[]',
  active INTEGER NOT NULL DEFAULT 1,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -57,6 +57,26 @@ CREATE TABLE IF NOT EXISTS audit_log (
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 `);
+const usersSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get().sql;
+if (!usersSchema.includes("'admin'")) {
+  db.transaction(() => {
+    db.exec(`
+      ALTER TABLE users RENAME TO users_legacy;
+      CREATE TABLE users (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+       password_hash TEXT NOT NULL,
+       role TEXT NOT NULL CHECK(role IN ('owner','admin','manager','staff','reader')),
+       permissions TEXT NOT NULL DEFAULT '[]',
+       active INTEGER NOT NULL DEFAULT 1,
+       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO users(id,username,password_hash,role,permissions,active,created_at)
+        SELECT id,username,password_hash,role,permissions,active,created_at FROM users_legacy;
+      DROP TABLE users_legacy;
+    `);
+  })();
+}
 
 const sections = {
  members: {
@@ -168,7 +188,8 @@ const loginLimiter = rateLimit({windowMs:15*60*1000,limit:10,standardHeaders:tru
 const setupLimiter = rateLimit({windowMs:60*60*1000,limit:5,standardHeaders:true,legacyHeaders:false});
 const sectionsList = Object.keys(sections);
 const allPermissions = sectionsList;
-const roleLabels = {owner:'Inhaber',manager:'Verwalter',staff:'Mitarbeiter',reader:'Leser'};
+const roleLabels = {owner:'Inhaber',admin:'Administrator',manager:'Verwalter',staff:'Mitarbeiter',reader:'Leser'};
+function isAdmin(user){ return user.role==='owner'||user.role==='admin'; }
 
 function safeEqual(a,b) {
   const x=Buffer.from(String(a||'')), y=Buffer.from(String(b||''));
@@ -243,7 +264,7 @@ function log(user, action, section, recordId=null, details='') {
     .run(user.id,user.username,action,section,recordId, String(details).slice(0,500));
 }
 function publicUser(u) {
-  return {id:u.id,username:u.username,role:u.role,roleLabel:roleLabels[u.role],permissions:u.role==='owner'?allPermissions:JSON.parse(u.permissions),active:!!u.active};
+  return {id:u.id,username:u.username,role:u.role,roleLabel:roleLabels[u.role],permissions:isAdmin(u)?allPermissions:JSON.parse(u.permissions),active:!!u.active};
 }
 function auth(req,res,next){
   if(!req.session.userId) return res.status(401).json({error:'Bitte anmelden.'});
@@ -252,12 +273,12 @@ function auth(req,res,next){
   next();
 }
 function currentUser(req){ return db.prepare('SELECT * FROM users WHERE id=? AND active=1').get(req.session.userId); }
-function requireOwner(req,res,next){ const u=currentUser(req); if(!u||u.role!=='owner') return res.status(403).json({error:'Nur der Inhaber darf diesen Bereich verwenden.'}); req.user=u; next(); }
+function requireAdmin(req,res,next){ const u=currentUser(req); if(!u||!isAdmin(u)) return res.status(403).json({error:'Nur ein Administrator darf diesen Bereich verwenden.'}); req.user=u; next(); }
 function requirePermission(permission, write=false) {
   return (req,res,next)=>{
     const u=currentUser(req);
     if(!u) return res.status(401).json({error:'Bitte anmelden.'});
-    const perms=u.role==='owner'?allPermissions:JSON.parse(u.permissions);
+    const perms=isAdmin(u)?allPermissions:JSON.parse(u.permissions);
     if(!perms.includes(permission)) return res.status(403).json({error:'Keine Berechtigung für diesen Bereich.'});
     if(write && u.role==='reader') return res.status(403).json({error:'Dieser Zugang ist nur leseberechtigt.'});
     req.user=u; next();
@@ -339,7 +360,7 @@ app.get('/api/me',auth,(req,res)=>{
   res.json({user:publicUser(u),csrfToken:req.session.csrfToken});
 });
 app.get('/api/dashboard',auth,(req,res)=>{
-  const u=currentUser(req); const perms=u.role==='owner'?allPermissions:JSON.parse(u.permissions);
+  const u=currentUser(req); const perms=isAdmin(u)?allPermissions:JSON.parse(u.permissions);
   const counts={};
   for(const [section,cfg] of Object.entries(sections)) if(perms.includes(section)) counts[section]=db.prepare(`SELECT COUNT(*) AS n FROM "${cfg.table}"`).get().n;
   if(perms.includes('dues')) counts.openDues=db.prepare("SELECT COUNT(*) AS n FROM dues WHERE status='Offen'").get().n;
@@ -355,7 +376,7 @@ app.get('/api/data/:section',auth,recordDbSection,(req,res,next)=>{
 });
 app.post('/api/data/:section',auth,csrf,recordDbSection,(req,res)=>{
   const cfg=req.cfg; const perms=req.user?null:null;
-  const u=currentUser(req); const allowed=u && (u.role==='owner'||JSON.parse(u.permissions).includes(cfg.permission));
+  const u=currentUser(req); const allowed=u && (isAdmin(u)||JSON.parse(u.permissions).includes(cfg.permission));
   if(!allowed||u.role==='reader') return res.status(403).json({error:'Keine Schreibberechtigung.'});
   try {
     const data=cleanFields(cfg,req.body);
@@ -367,7 +388,7 @@ app.post('/api/data/:section',auth,csrf,recordDbSection,(req,res)=>{
 });
 app.put('/api/data/:section/:id',auth,csrf,recordDbSection,(req,res)=>{
   const cfg=req.cfg,u=currentUser(req);
-  const allowed=u&&(u.role==='owner'||JSON.parse(u.permissions).includes(cfg.permission));
+  const allowed=u&&(isAdmin(u)||JSON.parse(u.permissions).includes(cfg.permission));
   if(!allowed||u.role==='reader') return res.status(403).json({error:'Keine Schreibberechtigung.'});
   try {
     const data=cleanFields(cfg,req.body), keys=Object.keys(data);
@@ -379,7 +400,7 @@ app.put('/api/data/:section/:id',auth,csrf,recordDbSection,(req,res)=>{
 });
 app.delete('/api/data/:section/:id',auth,csrf,recordDbSection,(req,res)=>{
   const cfg=req.cfg,u=currentUser(req);
-  const allowed=u&&(u.role==='owner'||JSON.parse(u.permissions).includes(cfg.permission));
+  const allowed=u&&(isAdmin(u)||JSON.parse(u.permissions).includes(cfg.permission));
   if(!allowed||u.role==='reader') return res.status(403).json({error:'Keine Schreibberechtigung.'});
   const id=Number(req.params.id);
   const result=db.prepare(`DELETE FROM "${cfg.table}" WHERE id=?`).run(id);
@@ -388,15 +409,15 @@ app.delete('/api/data/:section/:id',auth,csrf,recordDbSection,(req,res)=>{
   res.json({ok:true});
 });
 
-app.get('/api/users',auth,requireOwner,(req,res)=>{
-  res.json(db.prepare('SELECT id,username,role,permissions,active,created_at FROM users ORDER BY id').all().map(u=>({...u,permissions:u.role==='owner'?allPermissions:JSON.parse(u.permissions),roleLabel:roleLabels[u.role],active:!!u.active})));
+app.get('/api/users',auth,requireAdmin,(req,res)=>{
+  res.json(db.prepare('SELECT id,username,role,permissions,active,created_at FROM users ORDER BY id').all().map(u=>({...u,permissions:isAdmin(u)?allPermissions:JSON.parse(u.permissions),roleLabel:roleLabels[u.role],active:!!u.active})));
 });
-app.post('/api/users',auth,csrf,requireOwner,(req,res)=>{
+app.post('/api/users',auth,csrf,requireAdmin,(req,res)=>{
   const username=String(req.body.username||'').trim(), password=String(req.body.password||''), role=String(req.body.role||'staff');
-  const permissions=Array.isArray(req.body.permissions)?req.body.permissions.filter(p=>allPermissions.includes(p)):[];
+  const permissions=role==='admin'?allPermissions:Array.isArray(req.body.permissions)?req.body.permissions.filter(p=>allPermissions.includes(p)):[];
   if(!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) return res.status(400).json({error:'Ungültiger Benutzername.'});
   if(password.length<12) return res.status(400).json({error:'Passwort muss mindestens 12 Zeichen haben.'});
-  if(!['manager','staff','reader'].includes(role)) return res.status(400).json({error:'Ungültige Rolle.'});
+  if(!['admin','manager','staff','reader'].includes(role)) return res.status(400).json({error:'Ungültige Rolle.'});
   try {
     const info=db.prepare('INSERT INTO users(username,password_hash,role,permissions) VALUES(?,?,?,?)')
       .run(username,bcrypt.hashSync(password,12),role,JSON.stringify(permissions));
@@ -404,21 +425,26 @@ app.post('/api/users',auth,csrf,requireOwner,(req,res)=>{
     res.status(201).json({id:info.lastInsertRowid});
   } catch(e){res.status(400).json({error:'Benutzername ist bereits vergeben.'});}
 });
-app.patch('/api/users/:id',auth,csrf,requireOwner,(req,res)=>{
+app.patch('/api/users/:id',auth,csrf,requireAdmin,(req,res)=>{
   const id=Number(req.params.id);
-  if(id===req.user.id) return res.status(400).json({error:'Den eigenen Inhaber-Zugang kannst du hier nicht ändern.'});
+  if(id===req.user.id) return res.status(400).json({error:'Den eigenen Zugang kannst du hier nicht ändern.'});
   const target=db.prepare("SELECT id,role FROM users WHERE id=? AND role<>'owner'").get(id);
   if(!target) return res.status(404).json({error:'Benutzer nicht gefunden.'});
   const updates=[]; const values=[];
   if(req.body.active!==undefined){updates.push('active=?');values.push(req.body.active?1:0);}
-  if(req.body.role!==undefined){if(!['manager','staff','reader'].includes(req.body.role))return res.status(400).json({error:'Ungültige Rolle.'});updates.push('role=?');values.push(req.body.role);}
-  if(req.body.permissions!==undefined){if(!Array.isArray(req.body.permissions))return res.status(400).json({error:'Ungültige Bereichsrechte.'});const perms=req.body.permissions.filter(p=>allPermissions.includes(p));updates.push('permissions=?');values.push(JSON.stringify(perms));}
+  const role=req.body.role===undefined?target.role:String(req.body.role);
+  if(req.body.role!==undefined){if(!['admin','manager','staff','reader'].includes(role))return res.status(400).json({error:'Ungültige Rolle.'});updates.push('role=?');values.push(role);}
+  if(role==='admin'||req.body.permissions!==undefined||target.role==='admin'){
+    if(req.body.permissions!==undefined&&role!=='admin'&&!Array.isArray(req.body.permissions))return res.status(400).json({error:'Ungültige Bereichsrechte.'});
+    const perms=role==='admin'?allPermissions:Array.isArray(req.body.permissions)?req.body.permissions.filter(p=>allPermissions.includes(p)):[];
+    updates.push('permissions=?');values.push(JSON.stringify(perms));
+  }
   if(!updates.length)return res.status(400).json({error:'Keine Änderungen übergeben.'});
   values.push(id);db.prepare(`UPDATE users SET ${updates.join(',')} WHERE id=?`).run(...values);
   log(req.user,'update','users',id,'Benutzerstatus, Rolle oder Bereichsrechte geändert');
   res.json({ok:true});
 });
-app.put('/api/users/:id/password',auth,csrf,requireOwner,(req,res)=>{
+app.put('/api/users/:id/password',auth,csrf,requireAdmin,(req,res)=>{
   const password=String(req.body.password||'');
   if(password.length<12) return res.status(400).json({error:'Passwort muss mindestens 12 Zeichen haben.'});
   const id=Number(req.params.id);
@@ -427,7 +453,7 @@ app.put('/api/users/:id/password',auth,csrf,requireOwner,(req,res)=>{
   log(req.user,'password_reset','users',id,'Passwort zurückgesetzt');
   res.json({ok:true});
 });
-app.get('/api/audit',auth,requireOwner,(req,res)=>{
+app.get('/api/audit',auth,requireAdmin,(req,res)=>{
   res.json(db.prepare('SELECT id,username,action,section,record_id,details,created_at FROM audit_log ORDER BY id DESC LIMIT 300').all());
 });
 

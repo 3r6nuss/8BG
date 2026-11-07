@@ -5,8 +5,8 @@ Ein privates, deutschsprachiges Verwaltungsportal für Member, Abgaben, Lager, T
 ## Funktionen
 
 - Login mit serverseitigen Sitzungen, bcrypt-Passwort-Hashes, Rate-Limit und CSRF-Schutz
-- Rollen für Inhaber, Verwalter, Mitarbeiter und Leser; Rechte je Bereich
-- Benutzerverwaltung und Änderungsprotokoll
+- Rollen für Inhaber, Administrator, Verwalter, Mitarbeiter und Leser; Rechte je Bereich
+- Administratoren erhalten Vollzugriff einschließlich Benutzerverwaltung und Änderungsprotokoll und können weitere Administratoren anlegen
 - Member, Abgaben, Lager, Tresor-Bewegungen und Zivis
 - Getrennte Kontaktbücher für Fams und Zivilisten
 - Produkt-Preisliste mit 32 bearbeitbaren Startplätzen
@@ -28,7 +28,7 @@ In `.env` drei unterschiedliche zufällige Werte für `SESSION_SECRET`, `SETUP_K
 npm start
 ```
 
-Öffne **http://localhost:3000**. Beim ersten Aufruf mit dem `SETUP_KEY` das Inhaber-Konto einrichten. In Entwicklung kann `npm run dev` verwendet werden; Syntaxprüfungen laufen mit `npm run check`.
+Öffne **http://localhost:3000**. Beim ersten Aufruf mit dem `SETUP_KEY` das Inhaber-Konto einrichten. Der Inhaber kann danach unter **Benutzer** weitere Administratoren mit Vollzugriff anlegen. Administratoren können ebenfalls Benutzer verwalten und Administrator-Rechte vergeben; der Inhaber-Zugang selbst kann nicht von anderen geändert werden. In Entwicklung kann `npm run dev` verwendet werden; Syntaxprüfungen laufen mit `npm run check`.
 
 ## Portainer, Nginx Proxy Manager und Cloudflare
 
