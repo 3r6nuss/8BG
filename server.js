@@ -15,6 +15,8 @@ const fs = require('node:fs');
 const PORT = Number(process.env.PORT || 3000);
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000;
+const REMEMBER_SESSION_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const requiredInProduction = ['SESSION_SECRET', 'SETUP_KEY', 'HEALTH_TOKEN'];
@@ -147,7 +149,7 @@ class SQLiteSessionStore extends session.Store {
   }
   set(sid, sess, cb) {
     try {
-      const expire = sess.cookie && sess.cookie.expires ? new Date(sess.cookie.expires).getTime() : Date.now() + 8*60*60*1000;
+      const expire = sess.cookie && sess.cookie.expires ? new Date(sess.cookie.expires).getTime() : Date.now() + SESSION_MAX_AGE_MS;
       db.prepare(`INSERT INTO sessions(sid,sess,expire) VALUES(?,?,?)
         ON CONFLICT(sid) DO UPDATE SET sess=excluded.sess, expire=excluded.expire`)
         .run(sid, JSON.stringify(sess), expire);
@@ -181,7 +183,7 @@ app.use(session({
   resave:false,
   saveUninitialized:false,
   rolling:true,
-  cookie:{httpOnly:true, secure:NODE_ENV==='production', sameSite:'lax', maxAge:8*60*60*1000}
+  cookie:{httpOnly:true, secure:NODE_ENV==='production', sameSite:'lax', maxAge:SESSION_MAX_AGE_MS}
 }));
 
 const loginLimiter = rateLimit({windowMs:15*60*1000,limit:10,standardHeaders:true,legacyHeaders:false,message:{error:'Zu viele Versuche. Bitte später erneut versuchen.'}});
@@ -341,6 +343,7 @@ app.post('/api/login',loginLimiter,(req,res)=>{
   if(!user||!user.active||!bcrypt.compareSync(password,user.password_hash)) return res.status(401).json({error:'Benutzername oder Passwort ist falsch.'});
   req.session.regenerate(err=>{
     if(err) return res.status(500).json({error:'Anmeldung fehlgeschlagen.'});
+    req.session.cookie.maxAge=req.body.rememberMe===true?REMEMBER_SESSION_MAX_AGE_MS:SESSION_MAX_AGE_MS;
     req.session.userId=user.id;
     req.session.csrfToken=crypto.randomBytes(32).toString('hex');
     req.session.save(e=>{

@@ -43,6 +43,7 @@ function showAuth({ setup = false, setupUnavailable = false } = {}) {
       ${setup ? '<label>Einrichtungsschlüssel<input name="setupKey" type="password" autocomplete="off" required></label>' : ''}
       <label>Benutzername<input name="username" minlength="3" maxlength="32" autocomplete="username" required></label>
       <label>Passwort<input name="password" type="password" minlength="${setup ? '12' : '1'}" autocomplete="${setup ? 'new-password' : 'current-password'}" required></label>
+      ${setup ? '' : '<label class="remember-option"><input name="rememberMe" type="checkbox"><span>14 Tage angemeldet bleiben</span></label>'}
       <button class="button button-primary button-wide" type="submit">${setup ? 'Inhaber-Zugang erstellen' : 'Anmelden'}<span aria-hidden="true">→</span></button>
     </form>
     <p class="auth-foot">${setup ? 'Das Passwort muss mindestens 12 Zeichen lang sein.' : 'Zugriff nur für berechtigte Mitglieder.'}</p>`;
@@ -71,7 +72,9 @@ function showAuth({ setup = false, setupUnavailable = false } = {}) {
         showMessage('Inhaber-Zugang erstellt. Du kannst dich jetzt anmelden.', 'success');
         showAuth();
       } else {
-        await request('/api/login', { method: 'POST', body: JSON.stringify(Object.fromEntries(form)) });
+        const credentials = Object.fromEntries(form);
+        credentials.rememberMe = form.get('rememberMe') === 'on';
+        await request('/api/login', { method: 'POST', body: JSON.stringify(credentials) });
         await loadUser();
         await showDashboard();
       }

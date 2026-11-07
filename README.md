@@ -4,7 +4,7 @@ Ein privates, deutschsprachiges Verwaltungsportal für Member, Abgaben, Lager, T
 
 ## Funktionen
 
-- Login mit serverseitigen Sitzungen, bcrypt-Passwort-Hashes, Rate-Limit und CSRF-Schutz
+- Login mit serverseitigen Sitzungen, bcrypt-Passwort-Hashes, Rate-Limit und CSRF-Schutz; optional 14 Tage angemeldet bleiben
 - Rollen für Inhaber, Administrator, Verwalter, Mitarbeiter und Leser; Rechte je Bereich
 - Administratoren erhalten Vollzugriff einschließlich Benutzerverwaltung und Änderungsprotokoll und können weitere Administratoren anlegen
 - Member, Abgaben, Lager, Tresor-Bewegungen und Zivis
@@ -29,6 +29,8 @@ npm start
 ```
 
 Öffne **http://localhost:3000**. Beim ersten Aufruf mit dem `SETUP_KEY` das Inhaber-Konto einrichten. Der Inhaber kann danach unter **Benutzer** weitere Administratoren mit Vollzugriff anlegen. Administratoren können ebenfalls Benutzer verwalten und Administrator-Rechte vergeben; der Inhaber-Zugang selbst kann nicht von anderen geändert werden. In Entwicklung kann `npm run dev` verwendet werden; Syntaxprüfungen laufen mit `npm run check`.
+
+Bei der Anmeldung kann **14 Tage angemeldet bleiben** aktiviert werden. Ohne Auswahl gilt die bisherige Sitzungsdauer von 8 Stunden. Die Laufzeit verlängert sich bei aktiver Nutzung; Abmelden beendet die Sitzung sofort.
 
 ## Portainer, Nginx Proxy Manager und Cloudflare
 
@@ -109,6 +111,6 @@ Das Volume `8bg_ivy_data` nicht entfernen. Vor dem Update ein Backup anlegen.
 - SQLite-Datei und Sitzungen liegen im persistenten Verzeichnis `/app/data`.
 - Lokal kann mit `npm run backup` eine SQLite-Sicherung im Datenverzeichnis erstellt werden; auf dem Server für konsistente Sicherungen den Stack vorher stoppen und das gesamte Volume sichern.
 - Für den Betrieb ist eine einzelne App-Instanz mit persistentem Speicher vorgesehen; mehrere Instanzen benötigen eine zentrale Datenbank und einen gemeinsamen Session-Store.
-- Passwörter werden als bcrypt-Hashes gespeichert. Sitzungs-Cookies sind `HttpOnly`, `SameSite=Lax` und in Produktion `Secure`.
+- Passwörter werden als bcrypt-Hashes gespeichert. Sitzungs-Cookies sind `HttpOnly`, `SameSite=Lax` und in Produktion `Secure`. Die optionale angemeldet-bleiben-Sitzung läuft nach bis zu 14 Tagen ohne Aktivität ab.
 - Das Portal verarbeitet personenbezogene und möglicherweise finanzielle Daten. Hosting, Datenschutz, Aufbewahrung, Zugriffe und Backups vor produktiver Nutzung prüfen.
 - Den Tresor nicht als Bank- oder Zahlungsdienst verwenden. Nur zulässige Bestands- und Buchungsdaten verwalten.

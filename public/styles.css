@@ -36,6 +36,8 @@ h1, h2, p { margin-top: 0; }
 .auth-intro p, .page-heading p { margin-bottom: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
 .form-stack { display: flex; flex-direction: column; gap: 18px; }
 .form-stack label { display: block; color: #cfccd8; font-size: 12px; font-weight: 600; }
+.form-stack .remember-option { display: flex; align-items: center; gap: 9px; color: #aaa6b5; cursor: pointer; font-size: 11px; font-weight: 400; }
+.form-stack .remember-option input { width: 15px; height: 15px; flex: 0 0 auto; margin: 0; accent-color: var(--purple-deep); }
 .form-stack input, .form-stack textarea, .form-stack select { display: block; width: 100%; margin-top: 8px; border: 1px solid var(--line); border-radius: 9px; background: #17161f; color: var(--text); padding: 12px 13px; font-size: 13px; }
 .form-stack textarea { resize: vertical; }
 .form-stack input::placeholder { color: #686574; }
